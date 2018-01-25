@@ -1,0 +1,18 @@
+[package]
+name = "win32-gamepads"
+version = "0.0.1"
+authors = ["Lokathor <zefria@gmail.com>"]
+repository = "https://github.com/Lokathor/win32-gamepads"
+readme = "README.md"
+keywords = []
+description = "Lets you use all sorts of gamepads with win32."
+license = "Unlicense"
+
+publish = false
+
+[lib]
+name = "win32_gamepads"
+path = "src/lib.rs"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["libloaderapi"] }
