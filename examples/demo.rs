@@ -133,6 +133,9 @@ fn xinput_get_state(user_index: u32) -> Option<XINPUT_STATE> {
   if xinput_status.load(ordering) == xinput_ACTIVE {
     let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
     let return_status = unsafe {
+      // This unwrap is safe only because we don't currently support unloading
+      // the system once it's active. Otherwise we'd have to fiddle with calling
+      // `map` on the option and all that.
       let func = opt_xinput_get_state.unwrap();
       func(user_index, &mut output)
     };
@@ -156,6 +159,9 @@ fn xinput_set_state(user_index: u32, left_motor_speed: u16, right_motor_speed: u
       wRightMotorSpeed: right_motor_speed,
     };
     let return_status = unsafe {
+      // This unwrap is safe only because we don't currently support unloading
+      // the system once it's active. Otherwise we'd have to fiddle with calling
+      // `map` on the option and all that.
       let func = opt_xinput_set_state.unwrap();
       func(user_index, &mut input)
     };
