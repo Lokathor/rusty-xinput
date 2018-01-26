@@ -14,5 +14,11 @@ publish = false
 name = "win32_gamepads"
 path = "src/lib.rs"
 
+[dependencies]
+log = "0.4"
+
+[dev-dependencies]
+simple_logger = "*"
+
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["libloaderapi"] }
+winapi = { version = "0.3", features = ["libloaderapi", "xinput"] }
