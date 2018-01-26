@@ -21,4 +21,4 @@ log = "0.4"
 simple_logger = "*"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["libloaderapi", "xinput"] }
+winapi = { version = "0.3", features = ["libloaderapi", "xinput", "winerror"] }

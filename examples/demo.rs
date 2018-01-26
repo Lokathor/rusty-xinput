@@ -7,6 +7,7 @@ use win32_gamepads::*;
 
 extern crate winapi;
 use winapi::shared::minwindef::{DWORD, HMODULE};
+use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
@@ -118,6 +119,49 @@ unsafe fn dynamic_load_xinput() {
   }
 }
 
+fn xinput_get_state(user_index: u32) -> Option<XINPUT_STATE> {
+  if xinput_status.load(ordering) == xinput_ACTIVE {
+    let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
+    let return_status = unsafe {
+      let func = opt_xinput_get_state.unwrap();
+      func(user_index, &mut output)
+    };
+    match return_status {
+      ERROR_SUCCESS => return Some(output),
+      ERROR_DEVICE_NOT_CONNECTED => return None,
+      s => {
+        trace!("Unexpected error code: {}", s);
+        return None;
+      }
+    };
+  } else {
+    None
+  }
+}
+
+fn xinput_set_state(user_index: u32, left_motor_speed: u16, right_motor_speed: u16) -> Option<()> {
+  if xinput_status.load(ordering) == xinput_ACTIVE {
+    let mut input = XINPUT_VIBRATION {
+      wLeftMotorSpeed: left_motor_speed,
+      wRightMotorSpeed: right_motor_speed,
+    };
+    let return_status = unsafe {
+      let func = opt_xinput_set_state.unwrap();
+      func(user_index, &mut input)
+    };
+    match return_status {
+      ERROR_SUCCESS => return Some(()),
+      ERROR_DEVICE_NOT_CONNECTED => return None,
+      s => {
+        trace!("Unexpected error code: {}", s);
+        return None;
+      }
+    };
+  } else {
+    None
+  }
+}
+
 extern crate simple_logger;
 
 fn main() {
@@ -129,6 +173,16 @@ fn main() {
     dynamic_load_xinput();
     trace!("{:?}", xinput_status.load(ordering));
 
-    gamepad();
+    loop {
+      ::std::thread::sleep(::std::time::Duration::from_millis(16));
+      match xinput_get_state(0) {
+        None => debug!("Controller 0 not detected!"),
+        Some(state) => {
+          if state.Gamepad.wButtons != 0 {
+            break;
+          }
+        }
+      }
+    }
   }
 }
