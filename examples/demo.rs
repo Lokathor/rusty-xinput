@@ -44,7 +44,7 @@ fn show_wide_null(arr: &[u16]) -> String {
     .collect()
 }
 
-unsafe fn dynamic_load_xinput() {
+fn dynamic_load_xinput() {
   // The result status is if the value was what we expected, and the value
   // inside is actual value seen.
   match xinput_status.compare_exchange(xinput_UNINITIALIZED, xinput_LOADING, ordering, ordering) {
@@ -68,7 +68,8 @@ unsafe fn dynamic_load_xinput() {
           "Attempting to load XInput DLL: {}",
           show_wide_null(&lib_name)
         );
-        xinput_handle = LoadLibraryW(lib_name.as_ptr());
+        // It's safe to call this, the worst that can happen is that we get a null back.
+        xinput_handle = unsafe { LoadLibraryW(lib_name.as_ptr()) };
         if !xinput_handle.is_null() {
           debug!("Success: XInput Loaded: {}", show_wide_null(&lib_name));
           break;
@@ -83,36 +84,45 @@ unsafe fn dynamic_load_xinput() {
         let get_state_name = CString::new("XInputGetState").unwrap();
         let set_state_name = CString::new("XInputSetState").unwrap();
 
-        let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr());
-        if !get_state_ptr.is_null() {
-          trace!("Found function {:?}.", get_state_name);
-          opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
-        } else {
-          trace!("Could not find function {:?}.", get_state_name);
+        // using transmute is so dodgy we'll put that in its own unsafe block.
+        unsafe {
+          let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr());
+          if !get_state_ptr.is_null() {
+            trace!("Found function {:?}.", get_state_name);
+            opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
+          } else {
+            trace!("Could not find function {:?}.", get_state_name);
+          }
         }
 
-        let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr());
-        if !set_state_ptr.is_null() {
-          trace!("Found Function {:?}.", set_state_name);
-          opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
-        } else {
-          trace!("Could not find function {:?}.", set_state_name);
+        // using transmute is so dodgy we'll put that in its own unsafe block.
+        unsafe {
+          let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr());
+          if !set_state_ptr.is_null() {
+            trace!("Found Function {:?}.", set_state_name);
+            opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
+          } else {
+            trace!("Could not find function {:?}.", set_state_name);
+          }
         }
 
-        if opt_xinput_get_state.is_some() && opt_xinput_set_state.is_some() {
-          global_xinput_handle = xinput_handle;
-          debug!("Function pointers loaded successfully.");
-          xinput_status
-            .compare_exchange(xinput_LOADING, xinput_ACTIVE, ordering, ordering)
-            .ok();
-        } else {
-          opt_xinput_get_state = None;
-          opt_xinput_set_state = None;
-          FreeLibrary(xinput_handle);
-          debug!("Could not load the function pointers.");
-          xinput_status
-            .compare_exchange(xinput_LOADING, xinput_UNINITIALIZED, ordering, ordering)
-            .ok();
+        // this is safe because no other code can be loading xinput at the same time as us.
+        unsafe {
+          if opt_xinput_get_state.is_some() && opt_xinput_set_state.is_some() {
+            global_xinput_handle = xinput_handle;
+            debug!("Function pointers loaded successfully.");
+            xinput_status
+              .compare_exchange(xinput_LOADING, xinput_ACTIVE, ordering, ordering)
+              .ok();
+          } else {
+            opt_xinput_get_state = None;
+            opt_xinput_set_state = None;
+            FreeLibrary(xinput_handle);
+            debug!("Could not load the function pointers.");
+            xinput_status
+              .compare_exchange(xinput_LOADING, xinput_UNINITIALIZED, ordering, ordering)
+              .ok();
+          }
         }
       }
     }
