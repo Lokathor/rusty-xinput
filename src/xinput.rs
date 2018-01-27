@@ -104,10 +104,10 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
         unsafe {
           let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr() as *mut i8);
           if !get_state_ptr.is_null() {
-            trace!("Found function {:?}.", get_state_name);
+            trace!("Found XInputGetState.");
             opt_xinput_get_state = Some(::core::mem::transmute(get_state_ptr));
           } else {
-            trace!("Could not find function {:?}.", get_state_name);
+            trace!("Could not find XInputGetState.");
           }
         }
 
@@ -115,10 +115,10 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
         unsafe {
           let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr() as *mut i8);
           if !set_state_ptr.is_null() {
-            trace!("Found Function {:?}.", set_state_name);
+            trace!("Found XInputSetState.");
             opt_xinput_set_state = Some(::core::mem::transmute(set_state_ptr));
           } else {
-            trace!("Could not find function {:?}.", set_state_name);
+            trace!("Could not find XInputSetState.");
           }
         }
 
@@ -126,7 +126,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
         unsafe {
           if opt_xinput_get_state.is_some() && opt_xinput_set_state.is_some() {
             global_xinput_handle = xinput_handle;
-            debug!("Function pointers loaded successfully.");
+            debug!("All function pointers loaded successfully.");
             xinput_status
               .compare_exchange(xinput_LOADING, xinput_ACTIVE, ordering, ordering)
               .ok();
