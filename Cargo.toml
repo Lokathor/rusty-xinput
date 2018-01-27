@@ -1,17 +1,17 @@
 [package]
-name = "win32-gamepads"
-version = "0.0.1"
+name = "rusty-gamepads"
+version = "0.1.0"
 authors = ["Lokathor <zefria@gmail.com>"]
-repository = "https://github.com/Lokathor/win32-gamepads"
+repository = "https://github.com/Lokathor/rusty-gamepads"
 readme = "README.md"
 keywords = []
-description = "Lets you use all sorts of gamepads with win32."
+description = "Lets you use all sorts of gamepads."
 license = "Unlicense"
 
 publish = false
 
 [lib]
-name = "win32_gamepads"
+name = "rusty_gamepads"
 path = "src/lib.rs"
 
 [dependencies]
