@@ -1,5 +1,7 @@
 //! XInput stuff. DOCS TODO.
 
+use super::*;
+
 use std::ffi::CString;
 
 use winapi::shared::minwindef::{DWORD, HMODULE};
@@ -19,23 +21,6 @@ const ordering: ::std::sync::atomic::Ordering = ::std::sync::atomic::Ordering::S
 const xinput_UNINITIALIZED: usize = 0;
 const xinput_LOADING: usize = 1;
 const xinput_ACTIVE: usize = 2;
-
-fn wide_null<S: AsRef<str>>(s: S) -> Vec<u16> {
-  let mut output = vec![];
-  for u in s.as_ref().encode_utf16() {
-    output.push(u)
-  }
-  output.push(0);
-  output
-}
-
-fn show_wide_null(arr: &[u16]) -> String {
-  arr
-    .iter()
-    .take_while(|&&u| u != 0)
-    .map(|&u| u as u8 as char)
-    .collect()
-}
 
 /// The ways that a dynamic load of XInput can fail.
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
