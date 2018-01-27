@@ -1,7 +1,5 @@
 environment:
   matrix:
-  - TARGET: 1.24-x86_64-pc-windows-msvc
-  - TARGET: 1.24-x86_64-pc-windows-gnu
   - TARGET: nightly-x86_64-pc-windows-msvc
   - TARGET: nightly-i686-pc-windows-msvc
   - TARGET: nightly-x86_64-pc-windows-gnu
