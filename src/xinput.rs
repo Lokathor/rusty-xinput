@@ -1,4 +1,27 @@
-//! XInput stuff. DOCS TODO.
+//! This is the module for all the XInput stuff.
+//!
+//! # How To Use This
+//!
+//! 1) Call `dynamic_load_xinput()`. This will attempt to load in a DLL that
+//!    supports XInput. Note that the user might not have XInput installed, so
+//!    be prepared to fall back to a keyboard/mouse if that happens.
+//! 2) Call `xinput_get_state(controller)` to get your data. Usually you do this
+//!    once at the start of each frame of the game. You can poll for controllers
+//!    0, 1, 2, or 3. If a controller is connected you'll get `Some(data)`. If
+//!    there's no controller, or if you give an out of bounds value, you'll just
+//!    get a `None` back.
+//! 3) Call `xinput_set_state(controller, left_speed, right_speed)` to set a
+//!    rumble effect on the controller. As with `xinput_get_state`, you can
+//!    select slots 0, 1, 2 or 3, and missing controllers or out of bounds
+//!    selections will safely do nothing. Several devices other than literal
+//!    XBox 360 controllers have XInput drivers, but not all of them actually
+//!    have rumble support, so this should be an extra not an essential.
+//!
+//! If xinput isn't fully loaded, a call to get_state or set_state will safely
+//! give a `None` result.
+//!
+//! Note that there are theoretically other XInput extras you might care about,
+//! but they're only available in Windows 8+ and I use Windows 7, so oh well.
 
 use super::*;
 
@@ -13,6 +36,7 @@ type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION
 static mut global_xinput_handle: HMODULE = ::core::ptr::null_mut();
 static mut opt_xinput_get_state: Option<XInputGetStateFunc> = None;
 static mut opt_xinput_set_state: Option<XInputSetStateFunc> = None;
+
 static xinput_status: ::core::sync::atomic::AtomicUsize = ::core::sync::atomic::ATOMIC_USIZE_INIT;
 const ordering: ::core::sync::atomic::Ordering = ::core::sync::atomic::Ordering::SeqCst;
 
@@ -418,14 +442,36 @@ fn normalize_raw_stick_value_test() {
   }
 }
 
+/// These are all the sorts of problems that can come up when you're using the
+/// xinput system.
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum XInputUsageError {
+  /// XInput isn't currently loaded.
+  XInputNotLoaded,
+  /// The controller ID you gave was 4 or more.
+  InvalidControllerID,
+  /// Not really an error, this controller is just missing.
+  DeviceNotConnected,
+  /// There was some sort of unexpected error happened, this is the error code
+  /// windows returned.
+  UnknownError(u32),
+}
+
 /// Polls the controller port given for the current controller state.
 ///
-/// # Failure
+/// # Errors
 ///
-/// If the xinput system isn't ready, if there's no controller in that slot, or
-/// if the slot if out of bounds, you simply get `None`.
-pub fn xinput_get_state(user_index: u32) -> Option<XInputState> {
-  if xinput_status.load(ordering) == xinput_ACTIVE && user_index < 4 {
+/// A few things can cause an `Err` value to come back, as explained by the
+/// `XInputUsageError` type.
+///
+/// Most commonly, a controller will simply not be connected. Most people don't
+/// have all four slots plugged in all the time.
+pub fn xinput_get_state(user_index: u32) -> Result<XInputState, XInputUsageError> {
+  if xinput_status.load(ordering) != xinput_ACTIVE {
+    Err(XInputUsageError::XInputNotLoaded)
+  } else if user_index >= 4 {
+    Err(XInputUsageError::InvalidControllerID)
+  } else {
     let mut output: XINPUT_STATE = unsafe { ::core::mem::zeroed() };
     let return_status = unsafe {
       // This unwrap is safe only because we don't currently support unloading
@@ -435,15 +481,13 @@ pub fn xinput_get_state(user_index: u32) -> Option<XInputState> {
       func(user_index, &mut output)
     };
     match return_status {
-      ERROR_SUCCESS => return Some(XInputState { raw: output }),
-      ERROR_DEVICE_NOT_CONNECTED => return None,
+      ERROR_SUCCESS => return Ok(XInputState { raw: output }),
+      ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
       s => {
         trace!("Unexpected error code: {}", s);
-        return None;
+        Err(XInputUsageError::UnknownError(s))
       }
-    };
-  } else {
-    None
+    }
   }
 }
 
@@ -454,16 +498,25 @@ pub fn xinput_get_state(user_index: u32) -> Option<XInputState> {
 ///
 /// On a 360 controller the left motor is low-frequency and the right motor is
 /// high-frequency. On other controllers running through xinput this might be
-/// the case, or the controller might not even have rumble ability at all.
+/// the case, or the controller might not even have rumble ability at all. If
+/// rumble is missing from the device you'll still get `Ok` return values, so
+/// treat rumble as an extra, not an essential.
 ///
-/// # Failure
+/// # Errors
 ///
-/// If the xinput system isn't ready, if there's no controller in that slot, or
-/// if the slot if out of bounds, you simply get `None`.
+/// A few things can cause an `Err` value to come back, as explained by the
+/// `XInputUsageError` type.
+///
+/// Most commonly, a controller will simply not be connected. Most people don't
+/// have all four slots plugged in all the time.
 pub fn xinput_set_state(
   user_index: u32, left_motor_speed: u16, right_motor_speed: u16
-) -> Option<()> {
-  if xinput_status.load(ordering) == xinput_ACTIVE && user_index < 4 {
+) -> Result<(), XInputUsageError> {
+  if xinput_status.load(ordering) != xinput_ACTIVE {
+    Err(XInputUsageError::XInputNotLoaded)
+  } else if user_index >= 4 {
+    Err(XInputUsageError::InvalidControllerID)
+  } else {
     let mut input = XINPUT_VIBRATION {
       wLeftMotorSpeed: left_motor_speed,
       wRightMotorSpeed: right_motor_speed,
@@ -476,14 +529,12 @@ pub fn xinput_set_state(
       func(user_index, &mut input)
     };
     match return_status {
-      ERROR_SUCCESS => return Some(()),
-      ERROR_DEVICE_NOT_CONNECTED => return None,
+      ERROR_SUCCESS => Ok(()),
+      ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
       s => {
         trace!("Unexpected error code: {}", s);
-        return None;
+        Err(XInputUsageError::UnknownError(s))
       }
-    };
-  } else {
-    None
+    }
   }
 }
