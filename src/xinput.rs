@@ -7,18 +7,17 @@
 //!    be prepared to fall back to a keyboard/mouse if that happens.
 //! 2) Call `xinput_get_state(controller)` to get your data. Usually you do this
 //!    once at the start of each frame of the game. You can poll for controllers
-//!    0, 1, 2, or 3. If a controller is connected you'll get `Some(data)`. If
-//!    there's no controller, or if you give an out of bounds value, you'll just
-//!    get a `None` back.
+//!    0, 1, 2, or 3. If a controller is connected you'll get `Ok(data)`.
+//!    Otherwise you'll get some sort of `Err` info.
 //! 3) Call `xinput_set_state(controller, left_speed, right_speed)` to set a
 //!    rumble effect on the controller. As with `xinput_get_state`, you can
 //!    select slots 0, 1, 2 or 3, and missing controllers or out of bounds
-//!    selections will safely do nothing. Several devices other than literal
+//!    selections will give an `Err` of some kind. Devices other than literal
 //!    XBox 360 controllers have XInput drivers, but not all of them actually
 //!    have rumble support, so this should be an extra not an essential.
 //!
-//! If xinput isn't fully loaded, a call to get_state or set_state will safely
-//! give a `None` result.
+//! If xinput isn't fully loaded, a call to get_state or set_state is still
+//! entirely safe to perform, you'll just get an `Err`.
 //!
 //! Note that there are theoretically other XInput extras you might care about,
 //! but they're only available in Windows 8+ and I use Windows 7, so oh well.
@@ -72,10 +71,12 @@ pub enum XInputLoadingFailure {
 ///
 /// This operation is thread-safe and can be performed at any time. If xinput
 /// hasn't been loaded yet, or if there was a failed load attempt, then
-/// `xinput_get_state` and `xinput_set_state` will safety return `None`.
+/// `xinput_get_state` and `xinput_set_state` will safety return an `Err` value
+/// to that effect.
 ///
-/// There's no way to unload XInput once it's been loaded, because it makes the
-/// normal operation a little faster, and why would you want to unload it anyway?
+/// There's no way provided to unload XInput once it's been loaded, because that
+/// makes the normal operation a little faster. Why would you want to unload it
+/// anyway? Don't be silly.
 ///
 /// # Failure
 ///
