@@ -1,1 +1,1 @@
-@ cargo run --example demo
+@ cargo run --example xinput_demo
