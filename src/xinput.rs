@@ -391,7 +391,7 @@ impl XInputState {
   /// before use. Negative inputs or maximum value inputs make the normalization
   /// just work improperly.
   pub fn normalize_raw_stick_value(raw_stick: (i16, i16), deadzone: i16) -> (f32, f32) {
-    let deadzone_float = deadzone.max(0).min(i16::max_value() - 1) as f32;
+    let deadzone_float = ::std::cmp::min(::std::cmp::max(deadzone, 0), i16::max_value() - 1) as f32;
     let raw_float = (raw_stick.0 as f32, raw_stick.1 as f32);
     let length = (raw_float.0 * raw_float.0 + raw_float.1 * raw_float.1).sqrt();
     let normalized = (raw_float.0 / length, raw_float.1 / length);
