@@ -2,8 +2,6 @@
 
 use super::*;
 
-use std::ffi::CString;
-
 use winapi::shared::minwindef::{DWORD, HMODULE};
 use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
@@ -12,11 +10,11 @@ use winapi::um::xinput::*;
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
 
-static mut global_xinput_handle: HMODULE = ::std::ptr::null_mut();
+static mut global_xinput_handle: HMODULE = ::core::ptr::null_mut();
 static mut opt_xinput_get_state: Option<XInputGetStateFunc> = None;
 static mut opt_xinput_set_state: Option<XInputSetStateFunc> = None;
-static xinput_status: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::ATOMIC_USIZE_INIT;
-const ordering: ::std::sync::atomic::Ordering = ::std::sync::atomic::Ordering::SeqCst;
+static xinput_status: ::core::sync::atomic::AtomicUsize = ::core::sync::atomic::ATOMIC_USIZE_INIT;
+const ordering: ::core::sync::atomic::Ordering = ::core::sync::atomic::Ordering::SeqCst;
 
 const xinput_UNINITIALIZED: usize = 0;
 const xinput_LOADING: usize = 1;
@@ -82,16 +80,13 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
       let xinput91 = wide_null("xinput9_1_0.dll");
       let xinput13 = wide_null("xinput1_3.dll");
 
-      let mut xinput_handle: HMODULE = ::std::ptr::null_mut();
-      for lib_name in vec![xinput14, xinput91, xinput13] {
-        trace!(
-          "Attempting to load XInput DLL: {}",
-          show_wide_null(&lib_name)
-        );
+      let mut xinput_handle: HMODULE = ::core::ptr::null_mut();
+      for lib_name in [xinput14, xinput91, xinput13].into_iter() {
+        trace!("Attempting to load XInput DLL: {:?}", WideNullU16(lib_name));
         // It's safe to call this, the worst that can happen is that we get a null back.
         xinput_handle = unsafe { LoadLibraryW(lib_name.as_ptr()) };
         if !xinput_handle.is_null() {
-          debug!("Success: XInput Loaded: {}", show_wide_null(&lib_name));
+          debug!("Success: XInput Loaded: {:?}", WideNullU16(lib_name));
           break;
         }
       }
@@ -102,15 +97,15 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
           .ok();
         Err(XInputLoadingFailure::NoDLL)
       } else {
-        let get_state_name = CString::new("XInputGetState").unwrap();
-        let set_state_name = CString::new("XInputSetState").unwrap();
+        let get_state_name = b"XInputGetState\0";
+        let set_state_name = b"XInputSetState\0";
 
         // using transmute is so dodgy we'll put that in its own unsafe block.
         unsafe {
-          let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr());
+          let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr() as *mut i8);
           if !get_state_ptr.is_null() {
             trace!("Found function {:?}.", get_state_name);
-            opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
+            opt_xinput_get_state = Some(::core::mem::transmute(get_state_ptr));
           } else {
             trace!("Could not find function {:?}.", get_state_name);
           }
@@ -118,10 +113,10 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
 
         // using transmute is so dodgy we'll put that in its own unsafe block.
         unsafe {
-          let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr());
+          let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr() as *mut i8);
           if !set_state_ptr.is_null() {
             trace!("Found Function {:?}.", set_state_name);
-            opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
+            opt_xinput_set_state = Some(::core::mem::transmute(set_state_ptr));
           } else {
             trace!("Could not find function {:?}.", set_state_name);
           }
@@ -172,7 +167,7 @@ pub struct XInputState {
   pub raw: XINPUT_STATE,
 }
 
-impl ::std::cmp::PartialEq for XInputState {
+impl ::core::cmp::PartialEq for XInputState {
   /// Equality for `XInputState` values is based _only_ on the
   /// `dwPacketNumber` of the wrapped `XINPUT_STATE` value. This is entirely
   /// correct for values obtained from the xinput system, but if you make your
@@ -182,10 +177,10 @@ impl ::std::cmp::PartialEq for XInputState {
   }
 }
 
-impl ::std::cmp::Eq for XInputState {}
+impl ::core::cmp::Eq for XInputState {}
 
-impl ::std::fmt::Debug for XInputState {
-  fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl ::core::fmt::Debug for XInputState {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
     write!(f, "XInputState (_)")
   }
 }
@@ -391,7 +386,8 @@ impl XInputState {
   /// before use. Negative inputs or maximum value inputs make the normalization
   /// just work improperly.
   pub fn normalize_raw_stick_value(raw_stick: (i16, i16), deadzone: i16) -> (f32, f32) {
-    let deadzone_float = ::std::cmp::min(::std::cmp::max(deadzone, 0), i16::max_value() - 1) as f32;
+    let deadzone_float =
+      ::core::cmp::min(::core::cmp::max(deadzone, 0), i16::max_value() - 1) as f32;
     let raw_float = (raw_stick.0 as f32, raw_stick.1 as f32);
     let length = (raw_float.0 * raw_float.0 + raw_float.1 * raw_float.1).sqrt();
     let normalized = (raw_float.0 / length, raw_float.1 / length);
@@ -431,7 +427,7 @@ fn normalize_raw_stick_value_test() {
 /// if the slot if out of bounds, you simply get `None`.
 pub fn xinput_get_state(user_index: u32) -> Option<XInputState> {
   if xinput_status.load(ordering) == xinput_ACTIVE && user_index < 4 {
-    let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
+    let mut output: XINPUT_STATE = unsafe { ::core::mem::zeroed() };
     let return_status = unsafe {
       // This unwrap is safe only because we don't currently support unloading
       // the system once it's active. Otherwise we'd have to use a full mutex

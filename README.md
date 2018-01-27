@@ -8,3 +8,7 @@ Currently supported:
   * XInput
 
 Hopefully there will be more soon!
+
+# Requires Nightly because it uses const_fn
+
+sorry :(

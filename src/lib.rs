@@ -1,6 +1,7 @@
 //! A library to allow easy access to all sorts of gamepads and game
 //! controllers.
 
+#![no_std]
 #![allow(non_upper_case_globals)]
 #![warn(missing_docs)]
 #![forbid(missing_debug_implementations)]
@@ -16,21 +17,34 @@ pub mod xinput;
 #[cfg(target_os = "windows")]
 pub use xinput::*;
 
-/// Converts a rusty string into a win32 string.
-pub(crate) fn wide_null<S: AsRef<str>>(s: S) -> Vec<u16> {
-  let mut output = vec![];
-  for u in s.as_ref().encode_utf16() {
-    output.push(u)
+struct WideNullU16<'a>(&'a [u16; ::winapi::shared::minwindef::MAX_PATH]);
+
+impl<'a> ::core::fmt::Debug for WideNullU16<'a> {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    for &u in self.0.iter() {
+      if u == 0 {
+        break;
+      } else {
+        write!(f, "{}", u as u8 as char)?
+      }
+    }
+    Ok(())
   }
-  output.push(0);
-  output
 }
 
-/// Converts a win32 string into a rusty string (ascii only).
-pub(crate) fn show_wide_null(arr: &[u16]) -> String {
-  arr
-    .iter()
-    .take_while(|&&u| u != 0)
-    .map(|&u| u as u8 as char)
-    .collect()
+/// Converts a rusty string into a win32 string.
+pub(crate) fn wide_null<S: AsRef<str>>(s: S) -> [u16; ::winapi::shared::minwindef::MAX_PATH] {
+  let mut output: [u16; ::winapi::shared::minwindef::MAX_PATH] =
+    [0; ::winapi::shared::minwindef::MAX_PATH];
+  let mut i = 0;
+  for u in s.as_ref().encode_utf16() {
+    if i == output.len() - 1 {
+      break;
+    } else {
+      output[i] = u;
+    }
+    i += 1;
+  }
+  output[i] = 0;
+  output
 }
