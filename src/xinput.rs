@@ -460,6 +460,20 @@ pub enum XInputUsageError {
 
 /// Polls the controller port given for the current controller state.
 ///
+/// # Notes
+///
+/// It is a persistent problem (since ~2007?) with xinput that polling for the
+/// data of a controller that isn't connected will cause a long delay. In the
+/// area of 500_000 cpu cycles. That's like 2_000 cache misses in a row.
+///
+/// Once a controller is detected as not being plugged in you are strongly
+/// advised to not poll for its data again next frame. Instead, you should
+/// probably only poll for one known-missing controller per frame at most.
+///
+/// Alternately, you can register for your app to get plug and play events and
+/// then wait for one of them to come in before you ever poll for a missing
+/// controller a second time. That's up to you.
+///
 /// # Errors
 ///
 /// A few things can cause an `Err` value to come back, as explained by the
