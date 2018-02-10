@@ -1,13 +1,8 @@
-# rusty-gamepads
+# rusty-xinput
 
-A library that lets you use all sorts of gamepads. Supports `no_std`.
+Dynamically loads an xinput dll and lets you safely call the functions.
 
-Currently implemented:
-
-* Windows
-  * XInput - Dynamic loading, GetState, SetState
-
-Hopefully there will be more soon!
+Supports `no_std`.
 
 # Requires Nightly because it uses const_fn
 

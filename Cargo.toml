@@ -1,17 +1,17 @@
 [package]
-name = "rusty-gamepads"
+name = "rusty-xinput"
 version = "0.1.0"
 authors = ["Lokathor <zefria@gmail.com>"]
-repository = "https://github.com/Lokathor/rusty-gamepads"
+repository = "https://github.com/Lokathor/rusty-xinput"
 readme = "README.md"
 keywords = []
-description = "Lets you use all sorts of gamepads."
+description = "Lets you use xinput."
 license = "Unlicense"
 
 publish = false
 
 [lib]
-name = "rusty_gamepads"
+name = "rusty_xinput"
 path = "src/lib.rs"
 
 [dependencies]

@@ -3,8 +3,8 @@ extern crate log;
 
 extern crate simple_logger;
 
-extern crate rusty_gamepads;
-use rusty_gamepads::*;
+extern crate rusty_xinput;
+use rusty_xinput::*;
 
 fn main() {
   simple_logger::init().unwrap();
