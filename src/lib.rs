@@ -1,6 +1,6 @@
 //! This module lets you load an XInput DLL and use it.
 //!
-//! # How To Use This
+//! ## How To Use This
 //!
 //! 1) Call `dynamic_load_xinput()`. This will attempt to load in a DLL that
 //!    supports XInput. Note that the user might not have XInput installed, so
