@@ -124,6 +124,16 @@ pub enum XInputLoadingFailure {
 /// type. The most likely failure case is that the user's system won't have the
 /// required DLL, in which case you should probably allow them to play with just
 /// a keyboard/mouse instead.
+///
+/// # Current DLL Names
+///
+/// Currently the following DLL names are searched for in this order:
+///
+/// * `xinput9_1_0.dll`
+/// * `xinput1_4.dll`
+/// * `xinput1_3.dll`
+/// * `xinput1_2.dll`
+/// * `xinput1_1.dll`
 pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
   // The result status is if the value was what we expected, and the value
   // inside is actual value seen.
@@ -141,14 +151,17 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
       Err(XInputLoadingFailure::UnknownState)
     }
     Ok(_) => {
-      let xinput14 = wide_null("xinput1_4.dll");
       let xinput91 = wide_null("xinput9_1_0.dll");
+      let xinput14 = wide_null("xinput1_4.dll");
       let xinput13 = wide_null("xinput1_3.dll");
+      let xinput12 = wide_null("xinput1_2.dll");
+      let xinput11 = wide_null("xinput1_1.dll");
 
       let mut xinput_handle: HMODULE = ::core::ptr::null_mut();
-      for lib_name in [xinput14, xinput91, xinput13].into_iter() {
+      for lib_name in [xinput91, xinput14, xinput13, xinput12, xinput11].into_iter() {
         trace!("Attempting to load XInput DLL: {:?}", WideNullU16(lib_name));
-        // It's safe to call this, the worst that can happen is that we get a null back.
+        // It's always safe to call `LoadLibraryW`, the worst that can happen is
+        // that we get a null pointer back.
         xinput_handle = unsafe { LoadLibraryW(lib_name.as_ptr()) };
         if !xinput_handle.is_null() {
           debug!("Success: XInput Loaded: {:?}", WideNullU16(lib_name));
