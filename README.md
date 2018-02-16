@@ -1,19 +1,17 @@
+[![License:CC0](https://img.shields.io/badge/License-CC0-brightgreen.svg)](https://creativecommons.org/publicdomain/zero/1.0/)
+[![Build status](https://ci.appveyor.com/api/projects/status/2nhvh047mrv8plen?svg=true)](https://ci.appveyor.com/project/Lokathor/rusty-xinput)
+
 # rusty-xinput
 
 Dynamically loads an xinput dll and lets you safely call the functions.
 
 Supports `no_std`.
 
-# Requires Nightly because it uses const_fn
-
-Calling certain const functions will become stable with 1.24, so starting then
-the crate will become usable in stable.
-
 # If you want to use other controller types
 
-If you have a controller that doesn't have an Xinput driver it probably uses
+If you have a controller that doesn't have an XInput driver it probably uses
 DirectInput instead. The DirectInput system isn't bound within the `winapi`
-crate because I'm too lazy to go make that PR.
+crate because I'm too lazy to go make that PR and no one else cares.
 
 Instead I can suggest you two options:
 

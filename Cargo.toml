@@ -1,12 +1,12 @@
 [package]
 name = "rusty-xinput"
-version = "0.2.0"
+version = "1.0.0"
 authors = ["Lokathor <zefria@gmail.com>"]
 repository = "https://github.com/Lokathor/rusty-xinput"
 readme = "README.md"
 keywords = []
 description = "Safe dynamic loading of xinput."
-license = "Unlicense"
+license = "CC0"
 
 [lib]
 name = "rusty_xinput"
