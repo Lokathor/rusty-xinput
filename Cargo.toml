@@ -6,7 +6,7 @@ repository = "https://github.com/Lokathor/rusty-xinput"
 readme = "README.md"
 keywords = []
 description = "Safe dynamic loading of xinput."
-license = "CC0"
+license = "CC0-1.0"
 
 [lib]
 name = "rusty_xinput"
