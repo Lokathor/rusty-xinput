@@ -8,8 +8,6 @@ keywords = []
 description = "Safe dynamic loading of xinput."
 license = "Unlicense"
 
-publish = false
-
 [lib]
 name = "rusty_xinput"
 path = "src/lib.rs"

@@ -52,7 +52,7 @@ const xinput_LOADING: usize = 1;
 const xinput_ACTIVE: usize = 2;
 
 /// Quick and dirty wrapper to let us format log messages easier.
-struct WideNullU16<'a>(&'a [u16; ::winapi::shared::minwindef::MAX_PATH]);
+pub(crate) struct WideNullU16<'a>(&'a [u16; ::winapi::shared::minwindef::MAX_PATH]);
 impl<'a> ::core::fmt::Debug for WideNullU16<'a> {
   fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
     for &u in self.0.iter() {
