@@ -269,6 +269,7 @@ impl XInputState {
   /// * Nintendo: X
   /// * Playstation: Triangle
   /// * XBox: Y
+  #[inline]
   pub fn north_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_Y != 0
   }
@@ -278,6 +279,7 @@ impl XInputState {
   /// * Nintendo: B
   /// * Playstation: X
   /// * XBox: A
+  #[inline]
   pub fn south_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_A != 0
   }
@@ -287,6 +289,7 @@ impl XInputState {
   /// * Nintendo: A
   /// * Playstation: Circle
   /// * XBox: B
+  #[inline]
   pub fn east_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_B != 0
   }
@@ -296,35 +299,41 @@ impl XInputState {
   /// * Nintendo: Y
   /// * Playstation: Square
   /// * XBox: X
+  #[inline]
   pub fn west_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_X != 0
   }
 
   /// The up button on the directional pad.
+  #[inline]
   pub fn arrow_up(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP != 0
   }
 
   /// The down button on the directional pad.
+  #[inline]
   pub fn arrow_down(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN != 0
   }
 
   /// The left button on the directional pad.
+  #[inline]
   pub fn arrow_left(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT != 0
   }
 
   /// The right button on the directional pad.
+  #[inline]
   pub fn arrow_right(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT != 0
   }
 
   /// The "start" button.
   ///
-  /// * Nintendo: Start (NES / NES), '+' (Pro Controller)
+  /// * Nintendo: Start (NES / SNES), '+' (Pro Controller)
   /// * Playstation: Start
   /// * XBox: Start
+  #[inline]
   pub fn start_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_START != 0
   }
@@ -334,6 +343,7 @@ impl XInputState {
   /// * Nintendo: Select (NES / NES), '-' (Pro Controller)
   /// * Playstation: Select
   /// * XBox: Back
+  #[inline]
   pub fn select_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_BACK != 0
   }
@@ -343,6 +353,7 @@ impl XInputState {
   /// * Nintendo: L
   /// * Playstation: L1
   /// * XBox: LB
+  #[inline]
   pub fn left_shoulder(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER != 0
   }
@@ -352,6 +363,7 @@ impl XInputState {
   /// * Nintendo: R
   /// * Playstation: R1
   /// * XBox: RB
+  #[inline]
   pub fn right_shoulder(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER != 0
   }
@@ -366,6 +378,7 @@ impl XInputState {
   /// * Nintendo: ZL
   /// * Playstation: L2
   /// * XBox: LT
+  #[inline]
   pub fn left_trigger(&self) -> u8 {
     self.raw.Gamepad.bLeftTrigger
   }
@@ -377,6 +390,7 @@ impl XInputState {
   /// * Nintendo: ZR
   /// * Playstation: R2
   /// * XBox: RT
+  #[inline]
   pub fn right_trigger(&self) -> u8 {
     self.raw.Gamepad.bRightTrigger
   }
@@ -386,6 +400,7 @@ impl XInputState {
   /// * Nintendo: ZL
   /// * Playstation: L2
   /// * XBox: LT
+  #[inline]
   pub fn left_trigger_bool(&self) -> bool {
     self.left_trigger() >= XInputState::TRIGGER_THRESHOLD
   }
@@ -395,6 +410,7 @@ impl XInputState {
   /// * Nintendo: ZR
   /// * Playstation: R2
   /// * XBox: RT
+  #[inline]
   pub fn right_trigger_bool(&self) -> bool {
     self.right_trigger() >= XInputState::TRIGGER_THRESHOLD
   }
@@ -404,6 +420,7 @@ impl XInputState {
   /// * Nintendo: (L)
   /// * Playstation: L3
   /// * XBox: (L)
+  #[inline]
   pub fn left_thumb_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB != 0
   }
@@ -413,6 +430,7 @@ impl XInputState {
   /// * Nintendo: (R)
   /// * Playstation: R3
   /// * XBox: (R)
+  #[inline]
   pub fn right_thumb_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB != 0
   }
@@ -426,6 +444,7 @@ impl XInputState {
   /// The left stick raw value.
   ///
   /// Positive values are to the right (X-axis) or up (Y-axis).
+  #[inline]
   pub fn left_stick_raw(&self) -> (i16, i16) {
     (self.raw.Gamepad.sThumbLX, self.raw.Gamepad.sThumbLY)
   }
@@ -433,6 +452,7 @@ impl XInputState {
   /// The right stick raw value.
   ///
   /// Positive values are to the right (X-axis) or up (Y-axis).
+  #[inline]
   pub fn right_stick_raw(&self) -> (i16, i16) {
     (self.raw.Gamepad.sThumbRX, self.raw.Gamepad.sThumbRY)
   }
@@ -440,6 +460,7 @@ impl XInputState {
   /// The left stick value normalized with the default dead-zone.
   ///
   /// See `normalize_raw_stick_value` for more.
+  #[inline]
   pub fn left_stick_normalized(&self) -> (f32, f32) {
     XInputState::normalize_raw_stick_value(self.left_stick_raw(), XInputState::LEFT_STICK_DEADZONE)
   }
@@ -447,6 +468,7 @@ impl XInputState {
   /// The right stick value normalized with the default dead-zone.
   ///
   /// See `normalize_raw_stick_value` for more.
+  #[inline]
   pub fn right_stick_normalized(&self) -> (f32, f32) {
     XInputState::normalize_raw_stick_value(
       self.right_stick_raw(),
@@ -463,6 +485,7 @@ impl XInputState {
   /// The `deadzone` value is clamped to the range 0 to 32,766 (inclusive)
   /// before use. Negative inputs or maximum value inputs make the normalization
   /// just work improperly.
+  #[inline]
   pub fn normalize_raw_stick_value(raw_stick: (i16, i16), deadzone: i16) -> (f32, f32) {
     let deadzone_float = deadzone.max(0).min(i16::max_value() - 1) as f32;
     let raw_float = (raw_stick.0 as f32, raw_stick.1 as f32);
@@ -578,7 +601,7 @@ pub fn xinput_get_state(user_index: u32) -> Result<XInputState, XInputUsageError
 /// Most commonly, a controller will simply not be connected. Most people don't
 /// have all four slots plugged in all the time.
 pub fn xinput_set_state(
-  user_index: u32, left_motor_speed: u16, right_motor_speed: u16
+  user_index: u32, left_motor_speed: u16, right_motor_speed: u16,
 ) -> Result<(), XInputUsageError> {
   if xinput_status.load(ordering) != xinput_ACTIVE {
     Err(XInputUsageError::XInputNotLoaded)
