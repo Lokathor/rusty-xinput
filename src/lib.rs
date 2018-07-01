@@ -26,6 +26,7 @@
 #![allow(non_upper_case_globals)]
 #![warn(missing_docs)]
 #![forbid(missing_debug_implementations)]
+#![cfg(windows)]
 
 #[macro_use]
 extern crate log;

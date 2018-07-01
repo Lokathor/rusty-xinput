@@ -6,7 +6,10 @@ repository = "https://github.com/Lokathor/rusty-xinput"
 readme = "README.md"
 keywords = ["xinput"]
 description = "Safe dynamic loading of xinput."
-license = "CC0-1.0"
+license = "0BSD"
+
+[badges]
+appveyor = { repository = "Lokathor/dwarf-term-rs" }
 
 [lib]
 name = "rusty_xinput"
