@@ -356,7 +356,7 @@ impl XInputState {
   /// * XBox: LB
   #[inline]
   pub fn left_shoulder(&self) -> bool {
-    self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER != 0
+    self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER != 0
   }
 
   /// The upper right shoulder button.
