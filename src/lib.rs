@@ -38,6 +38,8 @@ use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
+use core::fmt::{self, Debug, Formatter};
+
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
 type XInputGetBatteryInformationFunc =
@@ -664,7 +666,7 @@ pub fn xinput_set_state(
 }
 
 /// Defines type of batter used in device, if any.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct BatteryType(pub BYTE);
 
 impl BatteryType {
@@ -680,8 +682,23 @@ impl BatteryType {
   pub const Unknown: Self = BatteryType(BATTERY_TYPE_UNKNOWN);
 }
 
+impl Debug for BatteryType {
+  fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    let kind: &Debug = match *self {
+      BatteryType::Disconnected => &"Disconnected",
+      BatteryType::Wired => &"Wired",
+      BatteryType::Alkaline => &"Alkaline",
+      BatteryType::Nimh => &"Nimh",
+      BatteryType::Unknown => &"Unknown",
+      _ => &self.0,
+    };
+
+    f.debug_tuple("BatteryType").field(kind).finish()
+  }
+}
+
 /// Specify how much battery is charged for devices with battery.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct BatteryLevel(pub BYTE);
 
 impl BatteryLevel {
@@ -693,6 +710,20 @@ impl BatteryLevel {
   pub const Medium: Self = BatteryLevel(BATTERY_LEVEL_MEDIUM);
   /// Battery is full.
   pub const Full: Self = BatteryLevel(BATTERY_LEVEL_FULL);
+}
+
+impl Debug for BatteryLevel {
+  fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    let kind: &Debug = match *self {
+      BatteryLevel::Empty => &"Disconnected",
+      BatteryLevel::Low => &"Low",
+      BatteryLevel::Medium => &"Medium",
+      BatteryLevel::Full => &"Full",
+      _ => &self.0,
+    };
+
+    f.debug_tuple("BatteryLevel").field(kind).finish()
+  }
 }
 
 /// Holds information about device's battery.
