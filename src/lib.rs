@@ -162,7 +162,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
       let xinput11 = wide_null("xinput1_1.dll");
 
       let mut xinput_handle: HMODULE = ::core::ptr::null_mut();
-      for lib_name in [xinput91, xinput14, xinput13, xinput12, xinput11].into_iter() {
+      for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91].into_iter() {
         trace!("Attempting to load XInput DLL: {:?}", WideNullU16(lib_name));
         // It's always safe to call `LoadLibraryW`, the worst that can happen is
         // that we get a null pointer back.
