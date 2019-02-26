@@ -33,17 +33,22 @@ extern crate log;
 
 extern crate winapi;
 
-use winapi::shared::minwindef::{DWORD, HMODULE};
+use winapi::shared::minwindef::{DWORD, HMODULE, BYTE};
 use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
+use core::fmt::{self, Debug, Formatter};
+
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
+type XInputGetBatteryInformationFunc =
+  unsafe extern "system" fn(DWORD, BYTE, *mut XINPUT_BATTERY_INFORMATION) -> DWORD;
 
 static mut global_xinput_handle: HMODULE = ::core::ptr::null_mut();
 static mut opt_xinput_get_state: Option<XInputGetStateFunc> = None;
 static mut opt_xinput_set_state: Option<XInputSetStateFunc> = None;
+static mut opt_xinput_get_battery_information: Option<XInputGetBatteryInformationFunc> = None;
 
 static xinput_status: ::core::sync::atomic::AtomicUsize = ::core::sync::atomic::ATOMIC_USIZE_INIT;
 const ordering: ::core::sync::atomic::Ordering = ::core::sync::atomic::Ordering::SeqCst;
@@ -159,7 +164,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
       let xinput11 = wide_null("xinput1_1.dll");
 
       let mut xinput_handle: HMODULE = ::core::ptr::null_mut();
-      for lib_name in [xinput91, xinput14, xinput13, xinput12, xinput11].into_iter() {
+      for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91].into_iter() {
         trace!("Attempting to load XInput DLL: {:?}", WideNullU16(lib_name));
         // It's always safe to call `LoadLibraryW`, the worst that can happen is
         // that we get a null pointer back.
@@ -178,6 +183,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
       } else {
         let get_state_name = b"XInputGetState\0";
         let set_state_name = b"XInputSetState\0";
+        let get_battery_information_name = b"XInputGetBatteryInformation\0";
 
         // using transmute is so dodgy we'll put that in its own unsafe block.
         unsafe {
@@ -198,6 +204,17 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
             opt_xinput_set_state = Some(::core::mem::transmute(set_state_ptr));
           } else {
             trace!("Could not find XInputSetState.");
+          }
+        }
+
+        // using transmute is so dodgy we'll put that in its own unsafe block.
+        unsafe {
+          let get_battery_information_ptr = GetProcAddress(xinput_handle, get_battery_information_name.as_ptr() as *mut i8);
+          if !get_battery_information_ptr.is_null() {
+            trace!("Found XInputGetBatteryInformation.");
+            opt_xinput_get_battery_information = Some(::core::mem::transmute(get_battery_information_ptr));
+          } else {
+            trace!("Could not find XInputGetBatteryInformation.");
           }
         }
 
@@ -535,6 +552,23 @@ pub enum XInputUsageError {
   UnknownError(u32),
 }
 
+/// Error that can be returned by functions that are not guaranteed to be present
+/// in earlier XInput versions.
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum XInputOptionalFnUsageError {
+  /// XInput isn't currently loaded.
+  XInputNotLoaded,
+  /// The controller ID you gave was 4 or more.
+  InvalidControllerID,
+  /// Not really an error, this controller is just missing.
+  DeviceNotConnected,
+  /// Function is not present in loaded DLL
+  FunctionNotLoaded,
+  /// There was some sort of unexpected error happened, this is the error code
+  /// windows returned.
+  UnknownError(u32),
+}
+
 /// Polls the controller port given for the current controller state.
 ///
 /// # Notes
@@ -629,4 +663,119 @@ pub fn xinput_set_state(
       }
     }
   }
+}
+
+/// Defines type of batter used in device, if any.
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub struct BatteryType(pub BYTE);
+
+impl BatteryType {
+  /// Device is disconnected.
+  pub const Disconnected: Self = BatteryType(BATTERY_TYPE_DISCONNECTED);
+  /// Device does not have battery.
+  pub const Wired: Self = BatteryType(BATTERY_TYPE_WIRED);
+  /// Device has alkaline battery.
+  pub const Alkaline: Self = BatteryType(BATTERY_TYPE_ALKALINE);
+  /// Device has nimh battery.
+  pub const Nimh: Self = BatteryType(BATTERY_TYPE_NIMH);
+  /// The battery type is not known.
+  pub const Unknown: Self = BatteryType(BATTERY_TYPE_UNKNOWN);
+}
+
+impl Debug for BatteryType {
+  fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    let kind: &Debug = match *self {
+      BatteryType::Disconnected => &"Disconnected",
+      BatteryType::Wired => &"Wired",
+      BatteryType::Alkaline => &"Alkaline",
+      BatteryType::Nimh => &"Nimh",
+      BatteryType::Unknown => &"Unknown",
+      _ => &self.0,
+    };
+
+    f.debug_tuple("BatteryType").field(kind).finish()
+  }
+}
+
+/// Specify how much battery is charged for devices with battery.
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub struct BatteryLevel(pub BYTE);
+
+impl BatteryLevel {
+  /// Battery is empty.
+  pub const Empty: Self = BatteryLevel(BATTERY_LEVEL_EMPTY);
+  /// Battery level is low.
+  pub const Low: Self = BatteryLevel(BATTERY_LEVEL_LOW);
+  /// Battery level is medium.
+  pub const Medium: Self = BatteryLevel(BATTERY_LEVEL_MEDIUM);
+  /// Battery is full.
+  pub const Full: Self = BatteryLevel(BATTERY_LEVEL_FULL);
+}
+
+impl Debug for BatteryLevel {
+  fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    let kind: &Debug = match *self {
+      BatteryLevel::Empty => &"Disconnected",
+      BatteryLevel::Low => &"Low",
+      BatteryLevel::Medium => &"Medium",
+      BatteryLevel::Full => &"Full",
+      _ => &self.0,
+    };
+
+    f.debug_tuple("BatteryLevel").field(kind).finish()
+  }
+}
+
+/// Holds information about device's battery.
+///
+/// See also [XINPUT_BATTERY_INFORMATION](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/ns-xinput-_xinput_battery_information).
+#[derive(Debug, Copy, Clone)]
+pub struct XInputBatteryInformation {
+  /// Type of batter used in device, if any.
+  pub battery_type: BatteryType,
+  /// For devices with battery, contains battery level.
+  pub battery_level: BatteryLevel,
+}
+
+fn xinput_get_battery_information(user_index: u32, dev_type: BYTE) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+  if xinput_status.load(ordering) != xinput_ACTIVE {
+    Err(XInputOptionalFnUsageError::XInputNotLoaded)
+  } else if user_index >= 4 {
+    Err(XInputOptionalFnUsageError::InvalidControllerID)
+  } else if let Some(func) = unsafe { opt_xinput_get_battery_information } {
+    let mut output: XINPUT_BATTERY_INFORMATION = unsafe { ::core::mem::zeroed() };
+
+    let return_status = unsafe {
+      func(user_index, dev_type, &mut output)
+    };
+
+    match return_status {
+      ERROR_SUCCESS => {
+        return Ok(XInputBatteryInformation {
+          battery_type: BatteryType(output.BatteryType),
+          battery_level: BatteryLevel(output.BatteryLevel)
+        })
+      },
+      s => {
+        trace!("Unexpected error code: {}", s);
+        Err(XInputOptionalFnUsageError::UnknownError(s))
+      }
+    }
+  } else {
+    Err(XInputOptionalFnUsageError::FunctionNotLoaded)
+  }
+}
+
+/// Get battery type and charge level of a gamepad.
+///
+/// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
+pub fn xinput_get_gamepad_battery_information(user_index: u32) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+  xinput_get_battery_information(user_index, BATTERY_DEVTYPE_GAMEPAD)
+}
+
+/// Get battery type and charge level of a headset.
+///
+/// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
+pub fn xinput_get_headset_battery_information(user_index: u32) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+  xinput_get_battery_information(user_index, BATTERY_DEVTYPE_HEADSET)
 }
