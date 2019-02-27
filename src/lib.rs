@@ -671,25 +671,25 @@ pub struct BatteryType(pub BYTE);
 
 impl BatteryType {
   /// Device is disconnected.
-  pub const Disconnected: Self = BatteryType(BATTERY_TYPE_DISCONNECTED);
+  pub const DISCONNECTED: Self = BatteryType(BATTERY_TYPE_DISCONNECTED);
   /// Device does not have battery.
-  pub const Wired: Self = BatteryType(BATTERY_TYPE_WIRED);
+  pub const WIRED: Self = BatteryType(BATTERY_TYPE_WIRED);
   /// Device has alkaline battery.
-  pub const Alkaline: Self = BatteryType(BATTERY_TYPE_ALKALINE);
+  pub const ALKALINE: Self = BatteryType(BATTERY_TYPE_ALKALINE);
   /// Device has nimh battery.
-  pub const Nimh: Self = BatteryType(BATTERY_TYPE_NIMH);
+  pub const NIMH: Self = BatteryType(BATTERY_TYPE_NIMH);
   /// The battery type is not known.
-  pub const Unknown: Self = BatteryType(BATTERY_TYPE_UNKNOWN);
+  pub const UNKNOWN: Self = BatteryType(BATTERY_TYPE_UNKNOWN);
 }
 
 impl Debug for BatteryType {
   fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
     let kind: &Debug = match *self {
-      BatteryType::Disconnected => &"Disconnected",
-      BatteryType::Wired => &"Wired",
-      BatteryType::Alkaline => &"Alkaline",
-      BatteryType::Nimh => &"Nimh",
-      BatteryType::Unknown => &"Unknown",
+      BatteryType::DISCONNECTED => &"DISCONNECTED",
+      BatteryType::WIRED => &"WIRED",
+      BatteryType::ALKALINE => &"ALKALINE",
+      BatteryType::NIMH => &"NIMH",
+      BatteryType::UNKNOWN => &"UNKNOWN",
       _ => &self.0,
     };
 
@@ -703,26 +703,26 @@ pub struct BatteryLevel(pub BYTE);
 
 impl BatteryLevel {
   /// Battery is empty.
-  pub const Empty: Self = BatteryLevel(BATTERY_LEVEL_EMPTY);
+  pub const EMPTY: Self = BatteryLevel(BATTERY_LEVEL_EMPTY);
   /// Battery level is low.
-  pub const Low: Self = BatteryLevel(BATTERY_LEVEL_LOW);
+  pub const LOW: Self = BatteryLevel(BATTERY_LEVEL_LOW);
   /// Battery level is medium.
-  pub const Medium: Self = BatteryLevel(BATTERY_LEVEL_MEDIUM);
+  pub const MEDIUM: Self = BatteryLevel(BATTERY_LEVEL_MEDIUM);
   /// Battery is full.
-  pub const Full: Self = BatteryLevel(BATTERY_LEVEL_FULL);
+  pub const FULL: Self = BatteryLevel(BATTERY_LEVEL_FULL);
 }
 
 impl Debug for BatteryLevel {
   fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-    let kind: &Debug = match *self {
-      BatteryLevel::Empty => &"Disconnected",
-      BatteryLevel::Low => &"Low",
-      BatteryLevel::Medium => &"Medium",
-      BatteryLevel::Full => &"Full",
+    let level: &Debug = match *self {
+      BatteryLevel::EMPTY => &"EMPTY",
+      BatteryLevel::LOW => &"LOW",
+      BatteryLevel::MEDIUM => &"MEDIUM",
+      BatteryLevel::FULL => &"FULL",
       _ => &self.0,
     };
 
-    f.debug_tuple("BatteryLevel").field(kind).finish()
+    f.debug_tuple("BatteryLevel").field(level).finish()
   }
 }
 
