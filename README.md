@@ -7,8 +7,6 @@
 
 Dynamically loads an xinput dll and lets you safely call the functions.
 
-Supports `no_std`.
-
 # If you want to use other controller types
 
 If you have a controller that doesn't have an XInput driver it probably uses

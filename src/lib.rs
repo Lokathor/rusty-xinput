@@ -22,7 +22,6 @@
 //! Note that there are theoretically other XInput extras you might care about,
 //! but they're only available in Windows 8+ and I use Windows 7, so oh well.
 
-#![no_std]
 #![allow(non_upper_case_globals)]
 #![warn(missing_docs)]
 #![forbid(missing_debug_implementations)]
@@ -38,20 +37,20 @@ use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
-use core::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Formatter};
 
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
 type XInputGetBatteryInformationFunc =
   unsafe extern "system" fn(DWORD, BYTE, *mut XINPUT_BATTERY_INFORMATION) -> DWORD;
 
-static mut global_xinput_handle: HMODULE = ::core::ptr::null_mut();
+static mut global_xinput_handle: HMODULE = ::std::ptr::null_mut();
 static mut opt_xinput_get_state: Option<XInputGetStateFunc> = None;
 static mut opt_xinput_set_state: Option<XInputSetStateFunc> = None;
 static mut opt_xinput_get_battery_information: Option<XInputGetBatteryInformationFunc> = None;
 
-static xinput_status: ::core::sync::atomic::AtomicUsize = ::core::sync::atomic::ATOMIC_USIZE_INIT;
-const ordering: ::core::sync::atomic::Ordering = ::core::sync::atomic::Ordering::SeqCst;
+static xinput_status: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::ATOMIC_USIZE_INIT;
+const ordering: ::std::sync::atomic::Ordering = ::std::sync::atomic::Ordering::SeqCst;
 
 const xinput_UNINITIALIZED: usize = 0;
 const xinput_LOADING: usize = 1;
@@ -59,8 +58,8 @@ const xinput_ACTIVE: usize = 2;
 
 /// Quick and dirty wrapper to let us format log messages easier.
 pub(crate) struct WideNullU16<'a>(&'a [u16; ::winapi::shared::minwindef::MAX_PATH]);
-impl<'a> ::core::fmt::Debug for WideNullU16<'a> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+impl<'a> ::std::fmt::Debug for WideNullU16<'a> {
+  fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
     for &u in self.0.iter() {
       if u == 0 {
         break;
@@ -163,7 +162,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
       let xinput12 = wide_null("xinput1_2.dll");
       let xinput11 = wide_null("xinput1_1.dll");
 
-      let mut xinput_handle: HMODULE = ::core::ptr::null_mut();
+      let mut xinput_handle: HMODULE = ::std::ptr::null_mut();
       for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91].into_iter() {
         trace!("Attempting to load XInput DLL: {:?}", WideNullU16(lib_name));
         // It's always safe to call `LoadLibraryW`, the worst that can happen is
@@ -190,7 +189,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
           let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr() as *mut i8);
           if !get_state_ptr.is_null() {
             trace!("Found XInputGetState.");
-            opt_xinput_get_state = Some(::core::mem::transmute(get_state_ptr));
+            opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
           } else {
             trace!("Could not find XInputGetState.");
           }
@@ -201,7 +200,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
           let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr() as *mut i8);
           if !set_state_ptr.is_null() {
             trace!("Found XInputSetState.");
-            opt_xinput_set_state = Some(::core::mem::transmute(set_state_ptr));
+            opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
           } else {
             trace!("Could not find XInputSetState.");
           }
@@ -212,7 +211,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
           let get_battery_information_ptr = GetProcAddress(xinput_handle, get_battery_information_name.as_ptr() as *mut i8);
           if !get_battery_information_ptr.is_null() {
             trace!("Found XInputGetBatteryInformation.");
-            opt_xinput_get_battery_information = Some(::core::mem::transmute(get_battery_information_ptr));
+            opt_xinput_get_battery_information = Some(::std::mem::transmute(get_battery_information_ptr));
           } else {
             trace!("Could not find XInputGetBatteryInformation.");
           }
@@ -263,7 +262,7 @@ pub struct XInputState {
   pub raw: XINPUT_STATE,
 }
 
-impl ::core::cmp::PartialEq for XInputState {
+impl ::std::cmp::PartialEq for XInputState {
   /// Equality for `XInputState` values is based _only_ on the
   /// `dwPacketNumber` of the wrapped `XINPUT_STATE` value. This is entirely
   /// correct for values obtained from the xinput system, but if you make your
@@ -273,10 +272,10 @@ impl ::core::cmp::PartialEq for XInputState {
   }
 }
 
-impl ::core::cmp::Eq for XInputState {}
+impl ::std::cmp::Eq for XInputState {}
 
-impl ::core::fmt::Debug for XInputState {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+impl ::std::fmt::Debug for XInputState {
+  fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
     write!(f, "XInputState (_)")
   }
 }
@@ -598,7 +597,7 @@ pub fn xinput_get_state(user_index: u32) -> Result<XInputState, XInputUsageError
   } else if user_index >= 4 {
     Err(XInputUsageError::InvalidControllerID)
   } else {
-    let mut output: XINPUT_STATE = unsafe { ::core::mem::zeroed() };
+    let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
     let return_status = unsafe {
       // This unwrap is safe only because we don't currently support unloading
       // the system once it's active. Otherwise we'd have to use a full mutex
@@ -743,7 +742,7 @@ fn xinput_get_battery_information(user_index: u32, dev_type: BYTE) -> Result<XIn
   } else if user_index >= 4 {
     Err(XInputOptionalFnUsageError::InvalidControllerID)
   } else if let Some(func) = unsafe { opt_xinput_get_battery_information } {
-    let mut output: XINPUT_BATTERY_INFORMATION = unsafe { ::core::mem::zeroed() };
+    let mut output: XINPUT_BATTERY_INFORMATION = unsafe { ::std::mem::zeroed() };
 
     let return_status = unsafe {
       func(user_index, dev_type, &mut output)
