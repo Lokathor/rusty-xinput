@@ -507,7 +507,7 @@ impl XInputState {
   pub fn normalize_raw_stick_value(raw_stick: (i16, i16), deadzone: i16) -> (f32, f32) {
     let deadzone_float = deadzone.max(0).min(i16::max_value() - 1) as f32;
     let raw_float = (raw_stick.0 as f32, raw_stick.1 as f32);
-    let length = (raw_float.0 * raw_float.0 + raw_float.1 * raw_float.1).sqrt();
+    let length = sqrtf(raw_float.0 * raw_float.0 + raw_float.1 * raw_float.1);
     let normalized = (raw_float.0 / length, raw_float.1 / length);
     if length > deadzone_float {
       // clip our value to the expected maximum length.
@@ -778,4 +778,25 @@ pub fn xinput_get_gamepad_battery_information(user_index: u32) -> Result<XInputB
 /// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
 pub fn xinput_get_headset_battery_information(user_index: u32) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
   xinput_get_battery_information(user_index, BATTERY_DEVTYPE_HEADSET)
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn sqrtf(x: f32) -> f32 {
+  #[cfg(target_arch = "x86")]
+  use core::arch::x86::{_mm_set1_ps, _mm_sqrt_ss, _mm_cvtss_f32};
+
+  #[cfg(target_arch = "x86_64")]
+  use core::arch::x86_64::{_mm_set1_ps, _mm_sqrt_ss, _mm_cvtss_f32};
+
+  unsafe {
+    let x = _mm_set1_ps(x);
+    let sqrt = _mm_sqrt_ss(x);
+
+    _mm_cvtss_f32(sqrt)
+  }
+}
+
+#[cfg(all(not(target_arch = "x86"), not(target_arch = "x86_64")))]
+fn sqrtf(_x: f32) -> f32 {
+  unimplemented!()
 }
