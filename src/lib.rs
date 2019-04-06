@@ -664,7 +664,7 @@ pub fn xinput_set_state(
   }
 }
 
-/// Defines type of batter used in device, if any.
+/// Defines type of battery used in device, if any.
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct BatteryType(pub BYTE);
 
