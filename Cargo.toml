@@ -9,7 +9,7 @@ description = "Safe dynamic loading of xinput."
 license = "0BSD"
 
 [badges]
-appveyor = { repository = "Lokathor/dwarf-term-rs" }
+appveyor = { repository = "Lokathor/rusty-xinput" }
 
 [lib]
 name = "rusty_xinput"
