@@ -170,11 +170,11 @@ impl XInputHandle {
   ///
   /// Currently the following DLL names are searched for in this order:
   ///
-  /// * `xinput9_1_0.dll`
   /// * `xinput1_4.dll`
   /// * `xinput1_3.dll`
   /// * `xinput1_2.dll`
   /// * `xinput1_1.dll`
+  /// * `xinput9_1_0.dll`
   pub fn load_default() -> Result<XInputHandle, XInputLoadingFailure> {
     let xinput14 = "xinput1_4.dll";
     let xinput13 = "xinput1_3.dll";
