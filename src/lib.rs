@@ -35,18 +35,34 @@ extern crate lazy_static;
 
 extern crate winapi;
 
-use winapi::shared::minwindef::{BYTE, DWORD, HMODULE};
-use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
+use winapi::shared::guiddef::GUID;
+use winapi::shared::minwindef::{BOOL, BYTE, DWORD, HMODULE, UINT};
+use winapi::shared::ntdef::LPWSTR;
+use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_EMPTY, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
+type XInputEnableFunc = unsafe extern "system" fn(BOOL);
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
+type XInputGetCapabilitiesFunc =
+  unsafe extern "system" fn(DWORD, DWORD, *mut XINPUT_CAPABILITIES) -> DWORD;
+
+// Removed in xinput1_4.dll.
+type XInputGetDSoundAudioDeviceGuidsFunc =
+  unsafe extern "system" fn(DWORD, *mut GUID, *mut GUID) -> DWORD;
+
+// Added in xinput1_3.dll.
+type XInputGetKeystrokeFunc = unsafe extern "system" fn(DWORD, DWORD, PXINPUT_KEYSTROKE) -> DWORD;
 type XInputGetBatteryInformationFunc =
   unsafe extern "system" fn(DWORD, BYTE, *mut XINPUT_BATTERY_INFORMATION) -> DWORD;
+
+// Added in xinput1_4.dll.
+type XInputGetAudioDeviceIdsFunc =
+  unsafe extern "system" fn(DWORD, LPWSTR, *mut UINT, LPWSTR, *mut UINT) -> DWORD;
 
 struct ScopedHMODULE(HMODULE);
 impl Drop for ScopedHMODULE {
@@ -59,9 +75,14 @@ impl Drop for ScopedHMODULE {
 #[derive(Clone)]
 pub struct XInputHandle {
   handle: Arc<ScopedHMODULE>,
+  xinput_enable: XInputEnableFunc,
   xinput_get_state: XInputGetStateFunc,
   xinput_set_state: XInputSetStateFunc,
+  xinput_get_capabilities: XInputGetCapabilitiesFunc,
+  opt_xinput_get_keystroke: Option<XInputGetKeystrokeFunc>,
   opt_xinput_get_battery_information: Option<XInputGetBatteryInformationFunc>,
+  opt_xinput_get_audio_device_ids: Option<XInputGetAudioDeviceIdsFunc>,
+  opt_xinput_get_dsound_audio_device_guids: Option<XInputGetDSoundAudioDeviceGuidsFunc>,
 }
 
 impl Debug for XInputHandle {
@@ -155,11 +176,11 @@ impl XInputHandle {
   /// * `xinput1_2.dll`
   /// * `xinput1_1.dll`
   pub fn load_default() -> Result<XInputHandle, XInputLoadingFailure> {
-    let xinput91 = "xinput9_1_0.dll";
     let xinput14 = "xinput1_4.dll";
     let xinput13 = "xinput1_3.dll";
     let xinput12 = "xinput1_2.dll";
     let xinput11 = "xinput1_1.dll";
+    let xinput91 = "xinput9_1_0.dll";
 
     for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91].into_iter() {
       if let Ok(handle) = XInputHandle::load(lib_name) {
@@ -187,13 +208,34 @@ impl XInputHandle {
 
     let xinput_handle = ScopedHMODULE(xinput_handle);
 
+    let enable_name = b"XInputEnable\0";
     let get_state_name = b"XInputGetState\0";
     let set_state_name = b"XInputSetState\0";
+    let get_capabilities_name = b"XInputGetCapabilities\0";
+    let get_keystroke_name = b"XInputGetKeystroke\0";
     let get_battery_information_name = b"XInputGetBatteryInformation\0";
+    let get_audio_device_ids_name = b"XInputGetAudioDeviceIds\0";
+    let get_dsound_audio_device_guids_name = b"XInputGetDSoundAudioDeviceGuids\0";
 
+    let mut opt_xinput_enable = None;
     let mut opt_xinput_get_state = None;
     let mut opt_xinput_set_state = None;
+    let mut opt_xinput_get_capabilities = None;
+    let mut opt_xinput_get_keystroke = None;
     let mut opt_xinput_get_battery_information = None;
+    let mut opt_xinput_get_audio_device_ids = None;
+    let mut opt_xinput_get_dsound_audio_device_guids = None;
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let enable_ptr = GetProcAddress(xinput_handle.0, enable_name.as_ptr() as *mut i8);
+      if !enable_ptr.is_null() {
+        trace!("Found XInputEnable.");
+        opt_xinput_enable = Some(::std::mem::transmute(enable_ptr));
+      } else {
+        trace!("Could not find XInputEnable.");
+      }
+    }
 
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
@@ -219,6 +261,30 @@ impl XInputHandle {
 
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
+      let get_capabilities_ptr =
+        GetProcAddress(xinput_handle.0, get_capabilities_name.as_ptr() as *mut i8);
+      if !get_capabilities_ptr.is_null() {
+        trace!("Found XInputGetCapabilities.");
+        opt_xinput_get_capabilities = Some(::std::mem::transmute(get_capabilities_ptr));
+      } else {
+        trace!("Could not find XInputGetCapabilities.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_keystroke_ptr =
+        GetProcAddress(xinput_handle.0, get_keystroke_name.as_ptr() as *mut i8);
+      if !get_keystroke_ptr.is_null() {
+        trace!("Found XInputGetKeystroke.");
+        opt_xinput_get_keystroke = Some(::std::mem::transmute(get_keystroke_ptr));
+      } else {
+        trace!("Could not find XInputGetKeystroke.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
       let get_battery_information_ptr = GetProcAddress(
         xinput_handle.0,
         get_battery_information_name.as_ptr() as *mut i8,
@@ -232,14 +298,52 @@ impl XInputHandle {
       }
     }
 
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_dsound_audio_device_guids_ptr = GetProcAddress(
+        xinput_handle.0,
+        get_dsound_audio_device_guids_name.as_ptr() as *mut i8,
+      );
+      if !get_dsound_audio_device_guids_ptr.is_null() {
+        trace!("Found XInputGetDSoundAudioDeviceGuids.");
+        opt_xinput_get_dsound_audio_device_guids =
+          Some(::std::mem::transmute(get_dsound_audio_device_guids_ptr));
+      } else {
+        trace!("Could not find XInputGetDSoundAudioDeviceGuids.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_audio_device_ids_ptr = GetProcAddress(
+        xinput_handle.0,
+        get_audio_device_ids_name.as_ptr() as *mut i8,
+      );
+      if !get_audio_device_ids_ptr.is_null() {
+        trace!("Found XInputGetAudioDeviceIds.");
+        opt_xinput_get_audio_device_ids = Some(::std::mem::transmute(get_audio_device_ids_ptr));
+      } else {
+        trace!("Could not find XInputGetAudioDeviceIds.");
+      }
+    }
+
     // this is safe because no other code can be loading xinput at the same time as us.
-    if opt_xinput_get_state.is_some() && opt_xinput_set_state.is_some() {
+    if opt_xinput_enable.is_some()
+      && opt_xinput_get_state.is_some()
+      && opt_xinput_set_state.is_some()
+      && opt_xinput_get_capabilities.is_some()
+    {
       debug!("All function pointers loaded successfully.");
       Ok(XInputHandle {
         handle: Arc::new(xinput_handle),
+        xinput_enable: opt_xinput_enable.unwrap(),
         xinput_get_state: opt_xinput_get_state.unwrap(),
         xinput_set_state: opt_xinput_set_state.unwrap(),
+        xinput_get_capabilities: opt_xinput_get_capabilities.unwrap(),
+        opt_xinput_get_keystroke,
         opt_xinput_get_battery_information,
+        opt_xinput_get_dsound_audio_device_guids,
+        opt_xinput_get_audio_device_ids,
       })
     } else {
       debug!("Could not load the function pointers.");
@@ -611,6 +715,13 @@ pub enum XInputOptionalFnUsageError {
 }
 
 impl XInputHandle {
+  /// Enables or disables XInput.
+  ///
+  /// See the [MSDN documentation for XInputEnable](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputenable).
+  pub fn enable(&self, enable: bool) -> () {
+    unsafe { (self.xinput_enable)(enable as BOOL) };
+  }
+
   /// Polls the controller port given for the current controller state.
   ///
   /// # Notes
@@ -711,6 +822,57 @@ pub fn xinput_set_state(
   match *GLOBAL_XINPUT_HANDLE {
     Ok(ref handle) => handle.set_state(user_index, left_motor_speed, right_motor_speed),
     Err(_) => Err(XInputUsageError::XInputNotLoaded),
+  }
+}
+
+impl XInputHandle {
+  /// Retrieve the capabilities of a controller.
+  ///
+  /// See the [MSDN documentation for XInputGetCapabilities](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetcapabilities).
+  pub fn get_capabilities(&self, user_index: u32) -> Result<XINPUT_CAPABILITIES, XInputUsageError> {
+    if user_index >= 4 {
+      Err(XInputUsageError::InvalidControllerID)
+    } else {
+      unsafe {
+        let mut capabilities = std::mem::uninitialized();
+        let return_status = (self.xinput_get_capabilities)(user_index, 0, &mut capabilities);
+        match return_status {
+          ERROR_SUCCESS => Ok(capabilities),
+          ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
+          s => {
+            trace!("Unexpected error code: {}", s);
+            Err(XInputUsageError::UnknownError(s))
+          }
+        }
+      }
+    }
+  }
+
+  /// Retrieve a gamepad input event.
+  ///
+  /// See the [MSDN documentation for XInputGetKeystroke](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetkeystroke).
+  pub fn get_keystroke(
+    &self, user_index: u32,
+  ) -> Result<Option<XINPUT_KEYSTROKE>, XInputOptionalFnUsageError> {
+    if user_index >= 4 {
+      Err(XInputOptionalFnUsageError::InvalidControllerID)
+    } else if let Some(func) = self.opt_xinput_get_keystroke {
+      unsafe {
+        let mut keystroke = std::mem::uninitialized();
+        let return_status = (func)(user_index, 0, &mut keystroke);
+        match return_status {
+          ERROR_SUCCESS => Ok(Some(keystroke)),
+          ERROR_EMPTY => Ok(None),
+          ERROR_DEVICE_NOT_CONNECTED => Err(XInputOptionalFnUsageError::DeviceNotConnected),
+          s => {
+            trace!("Unexpected error code: {}", s);
+            Err(XInputOptionalFnUsageError::UnknownError(s))
+          }
+        }
+      }
+    } else {
+      Err(XInputOptionalFnUsageError::FunctionNotLoaded)
+    }
   }
 }
 
