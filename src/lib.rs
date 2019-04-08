@@ -30,31 +30,74 @@
 #[macro_use]
 extern crate log;
 
+#[macro_use]
+extern crate lazy_static;
+
 extern crate winapi;
 
-use winapi::shared::minwindef::{DWORD, HMODULE, BYTE};
-use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_SUCCESS};
+use winapi::shared::guiddef::GUID;
+use winapi::shared::minwindef::{BOOL, BYTE, DWORD, HMODULE, UINT};
+use winapi::shared::ntdef::LPWSTR;
+use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_EMPTY, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
 use std::fmt::{self, Debug, Formatter};
+use std::sync::Arc;
 
+type XInputEnableFunc = unsafe extern "system" fn(BOOL);
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
+type XInputGetCapabilitiesFunc =
+  unsafe extern "system" fn(DWORD, DWORD, *mut XINPUT_CAPABILITIES) -> DWORD;
+
+// Removed in xinput1_4.dll.
+type XInputGetDSoundAudioDeviceGuidsFunc =
+  unsafe extern "system" fn(DWORD, *mut GUID, *mut GUID) -> DWORD;
+
+// Added in xinput1_3.dll.
+type XInputGetKeystrokeFunc = unsafe extern "system" fn(DWORD, DWORD, PXINPUT_KEYSTROKE) -> DWORD;
 type XInputGetBatteryInformationFunc =
   unsafe extern "system" fn(DWORD, BYTE, *mut XINPUT_BATTERY_INFORMATION) -> DWORD;
 
-static mut global_xinput_handle: HMODULE = ::std::ptr::null_mut();
-static mut opt_xinput_get_state: Option<XInputGetStateFunc> = None;
-static mut opt_xinput_set_state: Option<XInputSetStateFunc> = None;
-static mut opt_xinput_get_battery_information: Option<XInputGetBatteryInformationFunc> = None;
+// Added in xinput1_4.dll.
+type XInputGetAudioDeviceIdsFunc =
+  unsafe extern "system" fn(DWORD, LPWSTR, *mut UINT, LPWSTR, *mut UINT) -> DWORD;
 
-static xinput_status: ::std::sync::atomic::AtomicUsize = ::std::sync::atomic::ATOMIC_USIZE_INIT;
-const ordering: ::std::sync::atomic::Ordering = ::std::sync::atomic::Ordering::SeqCst;
+struct ScopedHMODULE(HMODULE);
+impl Drop for ScopedHMODULE {
+  fn drop(&mut self) {
+    unsafe { FreeLibrary(self.0) };
+  }
+}
 
-const xinput_UNINITIALIZED: usize = 0;
-const xinput_LOADING: usize = 1;
-const xinput_ACTIVE: usize = 2;
+/// A handle to a loaded XInput DLL.
+#[derive(Clone)]
+pub struct XInputHandle {
+  handle: Arc<ScopedHMODULE>,
+  xinput_enable: XInputEnableFunc,
+  xinput_get_state: XInputGetStateFunc,
+  xinput_set_state: XInputSetStateFunc,
+  xinput_get_capabilities: XInputGetCapabilitiesFunc,
+  opt_xinput_get_keystroke: Option<XInputGetKeystrokeFunc>,
+  opt_xinput_get_battery_information: Option<XInputGetBatteryInformationFunc>,
+  opt_xinput_get_audio_device_ids: Option<XInputGetAudioDeviceIdsFunc>,
+  opt_xinput_get_dsound_audio_device_guids: Option<XInputGetDSoundAudioDeviceGuidsFunc>,
+}
+
+impl Debug for XInputHandle {
+  fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    write!(f, "XInputHandle(handle = {:?})", self.handle.0)
+  }
+}
+
+unsafe impl Send for XInputHandle {}
+unsafe impl Sync for XInputHandle {}
+
+lazy_static! {
+  static ref GLOBAL_XINPUT_HANDLE: Result<XInputHandle, XInputLoadingFailure> =
+    XInputHandle::load_default();
+}
 
 /// Quick and dirty wrapper to let us format log messages easier.
 pub(crate) struct WideNullU16<'a>(&'a [u16; ::winapi::shared::minwindef::MAX_PATH]);
@@ -94,6 +137,7 @@ pub enum XInputLoadingFailure {
   /// The xinput system was already in the process of loading in some other
   /// thread. This attempt failed because of that, but that other attempt might
   /// still succeed.
+  #[deprecated]
   AlreadyLoading,
   /// The xinput system was already active. A failure of this kind leaves the
   /// system active.
@@ -110,6 +154,202 @@ pub enum XInputLoadingFailure {
   /// situation to find. Either way, the xinput status is set to "uninitialized"
   /// and as with the NoDLL error you could potentially try again.
   NoPointers,
+}
+
+impl XInputHandle {
+  /// Attempts to dynamically load an XInput DLL and get the function pointers.
+  ///
+  /// # Failure
+  ///
+  /// This can fail in a few ways, as explained in the `XInputLoadingFailure`
+  /// type. The most likely failure case is that the user's system won't have the
+  /// required DLL, in which case you should probably allow them to play with just
+  /// a keyboard/mouse instead.
+  ///
+  /// # Current DLL Names
+  ///
+  /// Currently the following DLL names are searched for in this order:
+  ///
+  /// * `xinput9_1_0.dll`
+  /// * `xinput1_4.dll`
+  /// * `xinput1_3.dll`
+  /// * `xinput1_2.dll`
+  /// * `xinput1_1.dll`
+  pub fn load_default() -> Result<XInputHandle, XInputLoadingFailure> {
+    let xinput14 = "xinput1_4.dll";
+    let xinput13 = "xinput1_3.dll";
+    let xinput12 = "xinput1_2.dll";
+    let xinput11 = "xinput1_1.dll";
+    let xinput91 = "xinput9_1_0.dll";
+
+    for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91].into_iter() {
+      if let Ok(handle) = XInputHandle::load(lib_name) {
+        return Ok(handle);
+      }
+    }
+
+    debug!("Failure: XInput could not be loaded.");
+    Err(XInputLoadingFailure::NoDLL)
+  }
+
+  /// Attempt to load a specific XInput DLL and get the function pointers.
+  pub fn load<S: AsRef<str>>(s: S) -> Result<XInputHandle, XInputLoadingFailure> {
+    let lib_name = wide_null(s);
+    trace!(
+      "Attempting to load XInput DLL: {:?}",
+      WideNullU16(&lib_name)
+    );
+    // It's always safe to call `LoadLibraryW`, the worst that can happen is
+    // that we get a null pointer back.
+    let xinput_handle = unsafe { LoadLibraryW(lib_name.as_ptr()) };
+    if !xinput_handle.is_null() {
+      debug!("Success: XInput Loaded: {:?}", WideNullU16(&lib_name));
+    }
+
+    let xinput_handle = ScopedHMODULE(xinput_handle);
+
+    let enable_name = b"XInputEnable\0";
+    let get_state_name = b"XInputGetState\0";
+    let set_state_name = b"XInputSetState\0";
+    let get_capabilities_name = b"XInputGetCapabilities\0";
+    let get_keystroke_name = b"XInputGetKeystroke\0";
+    let get_battery_information_name = b"XInputGetBatteryInformation\0";
+    let get_audio_device_ids_name = b"XInputGetAudioDeviceIds\0";
+    let get_dsound_audio_device_guids_name = b"XInputGetDSoundAudioDeviceGuids\0";
+
+    let mut opt_xinput_enable = None;
+    let mut opt_xinput_get_state = None;
+    let mut opt_xinput_set_state = None;
+    let mut opt_xinput_get_capabilities = None;
+    let mut opt_xinput_get_keystroke = None;
+    let mut opt_xinput_get_battery_information = None;
+    let mut opt_xinput_get_audio_device_ids = None;
+    let mut opt_xinput_get_dsound_audio_device_guids = None;
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let enable_ptr = GetProcAddress(xinput_handle.0, enable_name.as_ptr() as *mut i8);
+      if !enable_ptr.is_null() {
+        trace!("Found XInputEnable.");
+        opt_xinput_enable = Some(::std::mem::transmute(enable_ptr));
+      } else {
+        trace!("Could not find XInputEnable.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_state_ptr = GetProcAddress(xinput_handle.0, get_state_name.as_ptr() as *mut i8);
+      if !get_state_ptr.is_null() {
+        trace!("Found XInputGetState.");
+        opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
+      } else {
+        trace!("Could not find XInputGetState.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let set_state_ptr = GetProcAddress(xinput_handle.0, set_state_name.as_ptr() as *mut i8);
+      if !set_state_ptr.is_null() {
+        trace!("Found XInputSetState.");
+        opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
+      } else {
+        trace!("Could not find XInputSetState.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_capabilities_ptr =
+        GetProcAddress(xinput_handle.0, get_capabilities_name.as_ptr() as *mut i8);
+      if !get_capabilities_ptr.is_null() {
+        trace!("Found XInputGetCapabilities.");
+        opt_xinput_get_capabilities = Some(::std::mem::transmute(get_capabilities_ptr));
+      } else {
+        trace!("Could not find XInputGetCapabilities.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_keystroke_ptr =
+        GetProcAddress(xinput_handle.0, get_keystroke_name.as_ptr() as *mut i8);
+      if !get_keystroke_ptr.is_null() {
+        trace!("Found XInputGetKeystroke.");
+        opt_xinput_get_keystroke = Some(::std::mem::transmute(get_keystroke_ptr));
+      } else {
+        trace!("Could not find XInputGetKeystroke.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_battery_information_ptr = GetProcAddress(
+        xinput_handle.0,
+        get_battery_information_name.as_ptr() as *mut i8,
+      );
+      if !get_battery_information_ptr.is_null() {
+        trace!("Found XInputGetBatteryInformation.");
+        opt_xinput_get_battery_information =
+          Some(::std::mem::transmute(get_battery_information_ptr));
+      } else {
+        trace!("Could not find XInputGetBatteryInformation.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_dsound_audio_device_guids_ptr = GetProcAddress(
+        xinput_handle.0,
+        get_dsound_audio_device_guids_name.as_ptr() as *mut i8,
+      );
+      if !get_dsound_audio_device_guids_ptr.is_null() {
+        trace!("Found XInputGetDSoundAudioDeviceGuids.");
+        opt_xinput_get_dsound_audio_device_guids =
+          Some(::std::mem::transmute(get_dsound_audio_device_guids_ptr));
+      } else {
+        trace!("Could not find XInputGetDSoundAudioDeviceGuids.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_audio_device_ids_ptr = GetProcAddress(
+        xinput_handle.0,
+        get_audio_device_ids_name.as_ptr() as *mut i8,
+      );
+      if !get_audio_device_ids_ptr.is_null() {
+        trace!("Found XInputGetAudioDeviceIds.");
+        opt_xinput_get_audio_device_ids = Some(::std::mem::transmute(get_audio_device_ids_ptr));
+      } else {
+        trace!("Could not find XInputGetAudioDeviceIds.");
+      }
+    }
+
+    // this is safe because no other code can be loading xinput at the same time as us.
+    if opt_xinput_enable.is_some()
+      && opt_xinput_get_state.is_some()
+      && opt_xinput_set_state.is_some()
+      && opt_xinput_get_capabilities.is_some()
+    {
+      debug!("All function pointers loaded successfully.");
+      Ok(XInputHandle {
+        handle: Arc::new(xinput_handle),
+        xinput_enable: opt_xinput_enable.unwrap(),
+        xinput_get_state: opt_xinput_get_state.unwrap(),
+        xinput_set_state: opt_xinput_set_state.unwrap(),
+        xinput_get_capabilities: opt_xinput_get_capabilities.unwrap(),
+        opt_xinput_get_keystroke,
+        opt_xinput_get_battery_information,
+        opt_xinput_get_dsound_audio_device_guids,
+        opt_xinput_get_audio_device_ids,
+      })
+    } else {
+      debug!("Could not load the function pointers.");
+      Err(XInputLoadingFailure::NoPointers)
+    }
+  }
 }
 
 /// Attempts to dynamically load an XInput DLL and get the function pointers.
@@ -139,106 +379,12 @@ pub enum XInputLoadingFailure {
 /// * `xinput1_3.dll`
 /// * `xinput1_2.dll`
 /// * `xinput1_1.dll`
+#[deprecated]
 pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
-  // The result status is if the value was what we expected, and the value
-  // inside is actual value seen.
-  match xinput_status.compare_exchange(xinput_UNINITIALIZED, xinput_LOADING, ordering, ordering) {
-    Err(xinput_LOADING) => {
-      debug!("A call to 'dynamic_load_xinput' was made while XInput was already loading.");
-      Err(XInputLoadingFailure::AlreadyLoading)
-    }
-    Err(xinput_ACTIVE) => {
-      debug!("A call to 'dynamic_load_xinput' was made while XInput was already active.");
-      Err(XInputLoadingFailure::AlreadyActive)
-    }
-    Err(_) => {
-      warn!("A call to 'dynamic_load_xinput' was made while XInput was in an unknown state.");
-      Err(XInputLoadingFailure::UnknownState)
-    }
-    Ok(_) => {
-      let xinput91 = wide_null("xinput9_1_0.dll");
-      let xinput14 = wide_null("xinput1_4.dll");
-      let xinput13 = wide_null("xinput1_3.dll");
-      let xinput12 = wide_null("xinput1_2.dll");
-      let xinput11 = wide_null("xinput1_1.dll");
-
-      let mut xinput_handle: HMODULE = ::std::ptr::null_mut();
-      for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91].into_iter() {
-        trace!("Attempting to load XInput DLL: {:?}", WideNullU16(lib_name));
-        // It's always safe to call `LoadLibraryW`, the worst that can happen is
-        // that we get a null pointer back.
-        xinput_handle = unsafe { LoadLibraryW(lib_name.as_ptr()) };
-        if !xinput_handle.is_null() {
-          debug!("Success: XInput Loaded: {:?}", WideNullU16(lib_name));
-          break;
-        }
-      }
-      if xinput_handle.is_null() {
-        debug!("Failure: XInput could not be loaded.");
-        xinput_status
-          .compare_exchange(xinput_LOADING, xinput_UNINITIALIZED, ordering, ordering)
-          .ok();
-        Err(XInputLoadingFailure::NoDLL)
-      } else {
-        let get_state_name = b"XInputGetState\0";
-        let set_state_name = b"XInputSetState\0";
-        let get_battery_information_name = b"XInputGetBatteryInformation\0";
-
-        // using transmute is so dodgy we'll put that in its own unsafe block.
-        unsafe {
-          let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr() as *mut i8);
-          if !get_state_ptr.is_null() {
-            trace!("Found XInputGetState.");
-            opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
-          } else {
-            trace!("Could not find XInputGetState.");
-          }
-        }
-
-        // using transmute is so dodgy we'll put that in its own unsafe block.
-        unsafe {
-          let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr() as *mut i8);
-          if !set_state_ptr.is_null() {
-            trace!("Found XInputSetState.");
-            opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
-          } else {
-            trace!("Could not find XInputSetState.");
-          }
-        }
-
-        // using transmute is so dodgy we'll put that in its own unsafe block.
-        unsafe {
-          let get_battery_information_ptr = GetProcAddress(xinput_handle, get_battery_information_name.as_ptr() as *mut i8);
-          if !get_battery_information_ptr.is_null() {
-            trace!("Found XInputGetBatteryInformation.");
-            opt_xinput_get_battery_information = Some(::std::mem::transmute(get_battery_information_ptr));
-          } else {
-            trace!("Could not find XInputGetBatteryInformation.");
-          }
-        }
-
-        // this is safe because no other code can be loading xinput at the same time as us.
-        unsafe {
-          if opt_xinput_get_state.is_some() && opt_xinput_set_state.is_some() {
-            global_xinput_handle = xinput_handle;
-            debug!("All function pointers loaded successfully.");
-            xinput_status
-              .compare_exchange(xinput_LOADING, xinput_ACTIVE, ordering, ordering)
-              .ok();
-            Ok(())
-          } else {
-            opt_xinput_get_state = None;
-            opt_xinput_set_state = None;
-            FreeLibrary(xinput_handle);
-            debug!("Could not load the function pointers.");
-            xinput_status
-              .compare_exchange(xinput_LOADING, xinput_UNINITIALIZED, ordering, ordering)
-              .ok();
-            Err(XInputLoadingFailure::NoPointers)
-          }
-        }
-      }
-    }
+  if let Err(err) = *GLOBAL_XINPUT_HANDLE {
+    Err(err)
+  } else {
+    Ok(())
   }
 }
 
@@ -568,103 +714,169 @@ pub enum XInputOptionalFnUsageError {
   UnknownError(u32),
 }
 
-/// Polls the controller port given for the current controller state.
-///
-/// # Notes
-///
-/// It is a persistent problem (since ~2007?) with xinput that polling for the
-/// data of a controller that isn't connected will cause a long delay. In the
-/// area of 500_000 cpu cycles. That's like 2_000 cache misses in a row.
-///
-/// Once a controller is detected as not being plugged in you are strongly
-/// advised to not poll for its data again next frame. Instead, you should
-/// probably only poll for one known-missing controller per frame at most.
-///
-/// Alternately, you can register for your app to get plug and play events and
-/// then wait for one of them to come in before you ever poll for a missing
-/// controller a second time. That's up to you.
-///
-/// # Errors
-///
-/// A few things can cause an `Err` value to come back, as explained by the
-/// `XInputUsageError` type.
-///
-/// Most commonly, a controller will simply not be connected. Most people don't
-/// have all four slots plugged in all the time.
-pub fn xinput_get_state(user_index: u32) -> Result<XInputState, XInputUsageError> {
-  if xinput_status.load(ordering) != xinput_ACTIVE {
-    Err(XInputUsageError::XInputNotLoaded)
-  } else if user_index >= 4 {
-    Err(XInputUsageError::InvalidControllerID)
-  } else {
-    let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
-    let return_status = unsafe {
-      // This unwrap is safe only because we don't currently support unloading
-      // the system once it's active. Otherwise we'd have to use a full mutex
-      // and all that.
-      let func = opt_xinput_get_state.unwrap();
-      func(user_index, &mut output)
-    };
-    match return_status {
-      ERROR_SUCCESS => return Ok(XInputState { raw: output }),
-      ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
-      s => {
-        trace!("Unexpected error code: {}", s);
-        Err(XInputUsageError::UnknownError(s))
+impl XInputHandle {
+  /// Enables or disables XInput.
+  ///
+  /// See the [MSDN documentation for XInputEnable](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputenable).
+  pub fn enable(&self, enable: bool) -> () {
+    unsafe { (self.xinput_enable)(enable as BOOL) };
+  }
+
+  /// Polls the controller port given for the current controller state.
+  ///
+  /// # Notes
+  ///
+  /// It is a persistent problem (since ~2007?) with xinput that polling for the
+  /// data of a controller that isn't connected will cause a long delay. In the
+  /// area of 500_000 cpu cycles. That's like 2_000 cache misses in a row.
+  ///
+  /// Once a controller is detected as not being plugged in you are strongly
+  /// advised to not poll for its data again next frame. Instead, you should
+  /// probably only poll for one known-missing controller per frame at most.
+  ///
+  /// Alternately, you can register for your app to get plug and play events and
+  /// then wait for one of them to come in before you ever poll for a missing
+  /// controller a second time. That's up to you.
+  ///
+  /// # Errors
+  ///
+  /// A few things can cause an `Err` value to come back, as explained by the
+  /// `XInputUsageError` type.
+  ///
+  /// Most commonly, a controller will simply not be connected. Most people don't
+  /// have all four slots plugged in all the time.
+  pub fn get_state(&self, user_index: u32) -> Result<XInputState, XInputUsageError> {
+    if user_index >= 4 {
+      Err(XInputUsageError::InvalidControllerID)
+    } else {
+      let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
+      let return_status = unsafe { (self.xinput_get_state)(user_index, &mut output) };
+      match return_status {
+        ERROR_SUCCESS => return Ok(XInputState { raw: output }),
+        ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
+        s => {
+          trace!("Unexpected error code: {}", s);
+          Err(XInputUsageError::UnknownError(s))
+        }
       }
     }
   }
 }
 
-/// Allows you to set the rumble speeds of the left and right motors.
-///
-/// Valid motor speeds are across the whole `u16` range, and the number is the
-/// scale of the motor intensity. In other words, 0 is 0%, and 65,535 is 100%.
-///
-/// On a 360 controller the left motor is low-frequency and the right motor is
-/// high-frequency. On other controllers running through xinput this might be
-/// the case, or the controller might not even have rumble ability at all. If
-/// rumble is missing from the device you'll still get `Ok` return values, so
-/// treat rumble as an extra, not an essential.
-///
-/// # Errors
-///
-/// A few things can cause an `Err` value to come back, as explained by the
-/// `XInputUsageError` type.
-///
-/// Most commonly, a controller will simply not be connected. Most people don't
-/// have all four slots plugged in all the time.
+/// See `XInputHandle::get_state`
+#[deprecated]
+pub fn xinput_get_state(user_index: u32) -> Result<XInputState, XInputUsageError> {
+  match *GLOBAL_XINPUT_HANDLE {
+    Ok(ref handle) => handle.get_state(user_index),
+    Err(_) => Err(XInputUsageError::XInputNotLoaded),
+  }
+}
+
+impl XInputHandle {
+  /// Allows you to set the rumble speeds of the left and right motors.
+  ///
+  /// Valid motor speeds are across the whole `u16` range, and the number is the
+  /// scale of the motor intensity. In other words, 0 is 0%, and 65,535 is 100%.
+  ///
+  /// On a 360 controller the left motor is low-frequency and the right motor is
+  /// high-frequency. On other controllers running through xinput this might be
+  /// the case, or the controller might not even have rumble ability at all. If
+  /// rumble is missing from the device you'll still get `Ok` return values, so
+  /// treat rumble as an extra, not an essential.
+  ///
+  /// # Errors
+  ///
+  /// A few things can cause an `Err` value to come back, as explained by the
+  /// `XInputUsageError` type.
+  ///
+  /// Most commonly, a controller will simply not be connected. Most people don't
+  /// have all four slots plugged in all the time.
+  pub fn set_state(
+    &self, user_index: u32, left_motor_speed: u16, right_motor_speed: u16,
+  ) -> Result<(), XInputUsageError> {
+    if user_index >= 4 {
+      Err(XInputUsageError::InvalidControllerID)
+    } else {
+      let mut input = XINPUT_VIBRATION {
+        wLeftMotorSpeed: left_motor_speed,
+        wRightMotorSpeed: right_motor_speed,
+      };
+      let return_status = unsafe { (self.xinput_set_state)(user_index, &mut input) };
+      match return_status {
+        ERROR_SUCCESS => Ok(()),
+        ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
+        s => {
+          trace!("Unexpected error code: {}", s);
+          Err(XInputUsageError::UnknownError(s))
+        }
+      }
+    }
+  }
+}
+
+/// See `XInputHandle::set_state`
+#[deprecated]
 pub fn xinput_set_state(
   user_index: u32, left_motor_speed: u16, right_motor_speed: u16,
 ) -> Result<(), XInputUsageError> {
-  if xinput_status.load(ordering) != xinput_ACTIVE {
-    Err(XInputUsageError::XInputNotLoaded)
-  } else if user_index >= 4 {
-    Err(XInputUsageError::InvalidControllerID)
-  } else {
-    let mut input = XINPUT_VIBRATION {
-      wLeftMotorSpeed: left_motor_speed,
-      wRightMotorSpeed: right_motor_speed,
-    };
-    let return_status = unsafe {
-      // This unwrap is safe only because we don't currently support unloading
-      // the system once it's active. Otherwise we'd have to use a full mutex
-      // and all that.
-      let func = opt_xinput_set_state.unwrap();
-      func(user_index, &mut input)
-    };
-    match return_status {
-      ERROR_SUCCESS => Ok(()),
-      ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
-      s => {
-        trace!("Unexpected error code: {}", s);
-        Err(XInputUsageError::UnknownError(s))
+  match *GLOBAL_XINPUT_HANDLE {
+    Ok(ref handle) => handle.set_state(user_index, left_motor_speed, right_motor_speed),
+    Err(_) => Err(XInputUsageError::XInputNotLoaded),
+  }
+}
+
+impl XInputHandle {
+  /// Retrieve the capabilities of a controller.
+  ///
+  /// See the [MSDN documentation for XInputGetCapabilities](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetcapabilities).
+  pub fn get_capabilities(&self, user_index: u32) -> Result<XINPUT_CAPABILITIES, XInputUsageError> {
+    if user_index >= 4 {
+      Err(XInputUsageError::InvalidControllerID)
+    } else {
+      unsafe {
+        let mut capabilities = std::mem::uninitialized();
+        let return_status = (self.xinput_get_capabilities)(user_index, 0, &mut capabilities);
+        match return_status {
+          ERROR_SUCCESS => Ok(capabilities),
+          ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
+          s => {
+            trace!("Unexpected error code: {}", s);
+            Err(XInputUsageError::UnknownError(s))
+          }
+        }
       }
+    }
+  }
+
+  /// Retrieve a gamepad input event.
+  ///
+  /// See the [MSDN documentation for XInputGetKeystroke](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetkeystroke).
+  pub fn get_keystroke(
+    &self, user_index: u32,
+  ) -> Result<Option<XINPUT_KEYSTROKE>, XInputOptionalFnUsageError> {
+    if user_index >= 4 {
+      Err(XInputOptionalFnUsageError::InvalidControllerID)
+    } else if let Some(func) = self.opt_xinput_get_keystroke {
+      unsafe {
+        let mut keystroke = std::mem::uninitialized();
+        let return_status = (func)(user_index, 0, &mut keystroke);
+        match return_status {
+          ERROR_SUCCESS => Ok(Some(keystroke)),
+          ERROR_EMPTY => Ok(None),
+          ERROR_DEVICE_NOT_CONNECTED => Err(XInputOptionalFnUsageError::DeviceNotConnected),
+          s => {
+            trace!("Unexpected error code: {}", s);
+            Err(XInputOptionalFnUsageError::UnknownError(s))
+          }
+        }
+      }
+    } else {
+      Err(XInputOptionalFnUsageError::FunctionNotLoaded)
     }
   }
 }
 
-/// Defines type of batter used in device, if any.
+/// Defines type of battery used in device, if any.
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub struct BatteryType(pub BYTE);
 
@@ -736,45 +948,71 @@ pub struct XInputBatteryInformation {
   pub battery_level: BatteryLevel,
 }
 
-fn xinput_get_battery_information(user_index: u32, dev_type: BYTE) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
-  if xinput_status.load(ordering) != xinput_ACTIVE {
-    Err(XInputOptionalFnUsageError::XInputNotLoaded)
-  } else if user_index >= 4 {
-    Err(XInputOptionalFnUsageError::InvalidControllerID)
-  } else if let Some(func) = unsafe { opt_xinput_get_battery_information } {
-    let mut output: XINPUT_BATTERY_INFORMATION = unsafe { ::std::mem::zeroed() };
+impl XInputHandle {
+  fn xinput_get_battery_information(
+    &self, user_index: u32, dev_type: BYTE,
+  ) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+    if user_index >= 4 {
+      Err(XInputOptionalFnUsageError::InvalidControllerID)
+    } else if let Some(func) = self.opt_xinput_get_battery_information {
+      let mut output: XINPUT_BATTERY_INFORMATION = unsafe { ::std::mem::zeroed() };
 
-    let return_status = unsafe {
-      func(user_index, dev_type, &mut output)
-    };
+      let return_status = unsafe { func(user_index, dev_type, &mut output) };
 
-    match return_status {
-      ERROR_SUCCESS => {
-        return Ok(XInputBatteryInformation {
-          battery_type: BatteryType(output.BatteryType),
-          battery_level: BatteryLevel(output.BatteryLevel)
-        })
-      },
-      s => {
-        trace!("Unexpected error code: {}", s);
-        Err(XInputOptionalFnUsageError::UnknownError(s))
+      match return_status {
+        ERROR_SUCCESS => {
+          return Ok(XInputBatteryInformation {
+            battery_type: BatteryType(output.BatteryType),
+            battery_level: BatteryLevel(output.BatteryLevel),
+          })
+        }
+        s => {
+          trace!("Unexpected error code: {}", s);
+          Err(XInputOptionalFnUsageError::UnknownError(s))
+        }
       }
+    } else {
+      Err(XInputOptionalFnUsageError::FunctionNotLoaded)
     }
-  } else {
-    Err(XInputOptionalFnUsageError::FunctionNotLoaded)
+  }
+
+  /// Get battery type and charge level of a gamepad.
+  ///
+  /// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
+  pub fn get_gamepad_battery_information(
+    &self, user_index: u32,
+  ) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+    self.xinput_get_battery_information(user_index, BATTERY_DEVTYPE_GAMEPAD)
+  }
+
+  /// Get battery type and charge level of a headset.
+  ///
+  /// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
+  pub fn get_headset_battery_information(
+    &self, user_index: u32,
+  ) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+    self.xinput_get_battery_information(user_index, BATTERY_DEVTYPE_HEADSET)
   }
 }
 
-/// Get battery type and charge level of a gamepad.
-///
-/// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
-pub fn xinput_get_gamepad_battery_information(user_index: u32) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
-  xinput_get_battery_information(user_index, BATTERY_DEVTYPE_GAMEPAD)
+/// See `InputHandle::get_gamepad_battery_information`
+#[deprecated]
+pub fn xinput_get_gamepad_battery_information(
+  user_index: u32,
+) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+  match *GLOBAL_XINPUT_HANDLE {
+    Ok(ref handle) => handle.get_gamepad_battery_information(user_index),
+    Err(_) => Err(XInputOptionalFnUsageError::XInputNotLoaded),
+  }
 }
 
-/// Get battery type and charge level of a headset.
-///
-/// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
-pub fn xinput_get_headset_battery_information(user_index: u32) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
-  xinput_get_battery_information(user_index, BATTERY_DEVTYPE_HEADSET)
+/// See `InputHandle::get_headset_battery_information`
+#[deprecated]
+pub fn xinput_get_headset_battery_information(
+  user_index: u32,
+) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
+  match *GLOBAL_XINPUT_HANDLE {
+    Ok(ref handle) => handle.get_headset_battery_information(user_index),
+    Err(_) => Err(XInputOptionalFnUsageError::XInputNotLoaded),
+  }
 }
