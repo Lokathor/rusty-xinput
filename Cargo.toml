@@ -8,6 +8,9 @@ keywords = ["xinput"]
 description = "Safe dynamic loading of xinput."
 license = "0BSD"
 
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+
 [badges]
 appveyor = { repository = "Lokathor/rusty-xinput" }
 
