@@ -1,0 +1,33 @@
+{
+    "version": "2.0.0",
+    "presentation": {
+        "clear": true,
+    },
+    "problemMatcher": ["$rustc"],
+    "type": "shell",
+    "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "RUST_BACKTRACE": "1" },
+    },
+    "tasks": [
+        { "group": "build", "label": "cargo test",      "command": "cargo test" },
+        { "group": "build", "label": "cargo check",     "command": "cargo check" },
+        { "group": "build", "label": "cargo clean",     "command": "cargo clean" },
+        { "group": "build", "label": "Build/Test CI",   "command": "scripts\\build-ci.cmd" },
+
+        // Annoyingly, we have to enumerate every launch.json target individually without the aid of input vars.
+        // Fortunately they can be hidden by simply not marking them as "group": "build".
+        { "label": "Build example xinput_demo msvc i686 debug 1.24.0",      "windows": { "command": "cargo +1.24.0-pc-windows-msvc  build --example=xinput_demo --target=i686-pc-windows-msvc" } },
+        { "label": "Build example xinput_demo msvc i686 debug stable",      "windows": { "command": "cargo +stable-pc-windows-msvc  build --example=xinput_demo --target=i686-pc-windows-msvc" } },
+        { "label": "Build example xinput_demo msvc i686 debug nightly",     "windows": { "command": "cargo +nightly-pc-windows-msvc build --example=xinput_demo --target=i686-pc-windows-msvc" } },
+        { "label": "Build example xinput_demo msvc i686 release 1.24.0",    "windows": { "command": "cargo +1.24.0-pc-windows-msvc  build --example=xinput_demo --target=i686-pc-windows-msvc --release" } },
+        { "label": "Build example xinput_demo msvc i686 release stable",    "windows": { "command": "cargo +stable-pc-windows-msvc  build --example=xinput_demo --target=i686-pc-windows-msvc --release" } },
+        { "label": "Build example xinput_demo msvc i686 release nightly",   "windows": { "command": "cargo +nightly-pc-windows-msvc build --example=xinput_demo --target=i686-pc-windows-msvc --release" } },
+        { "label": "Build example xinput_demo msvc x86_64 debug 1.24.0",    "windows": { "command": "cargo +1.24.0-pc-windows-msvc  build --example=xinput_demo --target=x86_64-pc-windows-msvc" } },
+        { "label": "Build example xinput_demo msvc x86_64 debug stable",    "windows": { "command": "cargo +stable-pc-windows-msvc  build --example=xinput_demo --target=x86_64-pc-windows-msvc" } },
+        { "label": "Build example xinput_demo msvc x86_64 debug nightly",   "windows": { "command": "cargo +nightly-pc-windows-msvc build --example=xinput_demo --target=x86_64-pc-windows-msvc" } },
+        { "label": "Build example xinput_demo msvc x86_64 release 1.24.0",  "windows": { "command": "cargo +1.24.0-pc-windows-msvc  build --example=xinput_demo --target=x86_64-pc-windows-msvc --release" } },
+        { "label": "Build example xinput_demo msvc x86_64 release stable",  "windows": { "command": "cargo +stable-pc-windows-msvc  build --example=xinput_demo --target=x86_64-pc-windows-msvc --release" } },
+        { "label": "Build example xinput_demo msvc x86_64 release nightly", "windows": { "command": "cargo +nightly-pc-windows-msvc build --example=xinput_demo --target=x86_64-pc-windows-msvc --release" } },
+    ]
+}

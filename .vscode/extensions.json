@@ -1,0 +1,6 @@
+{
+    "recommendations": [
+        "ms-vscode.cpptools",   // Debugging
+        "rust-lang.rust",       // Error Parsers, Intellisense
+    ]
+}

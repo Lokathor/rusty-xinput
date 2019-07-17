@@ -1,0 +1,36 @@
+{
+    "version": "0.2.0",
+    "inputs": [
+        {
+            "id": "architecture",
+            "type": "pickString",
+            "description": "Pick an architecture",
+            "options": ["i686", "x86_64"],
+            "default": "x86_64" // probably installed
+        },
+        {
+            "id": "config",
+            "type": "pickString",
+            "description": "Pick a build configuration",
+            "options": ["debug", "release"],
+            "default": "debug" // release doesn't even have debug symbols right now!
+        },
+        {
+            "id": "channel",
+            "type": "pickString",
+            "description": "Pick a rust channel",
+            "options": ["1.24.0", "stable", "nightly"],
+            "default": "stable" // probably installed
+        },
+        // When new examples are added, we should add an "id": "example" input.
+    ],
+    "configurations": [
+        {
+            "name": "Example (MSVC)",
+            "preLaunchTask": "Build example xinput_demo msvc ${input:architecture} ${input:config} ${input:channel}",
+            "windows": { "program": "${workspaceRoot}/target/${input:architecture}-pc-windows-msvc/${input:config}/examples/xinput_demo.exe" },
+            "type": "cppvsdbg", "request": "launch", "cwd": "${workspaceRoot}", "program": "",
+            "internalConsoleOptions": "openOnSessionStart", "externalConsole": false,
+        },
+    ]
+}
