@@ -4,14 +4,21 @@ extern crate log;
 extern crate simple_logger;
 
 extern crate rusty_xinput;
-use rusty_xinput::*;
 
+#[cfg(not(windows))]
+fn main() {
+  simple_logger::init().unwrap();
+  error!("XInput is not available on linux");
+  ::std::process::exit(1);
+}
+
+#[cfg(windows)]
 fn main() {
   simple_logger::init().unwrap();
 
   // If we fail to load the rest of the demo clearly can't run, so we'll just do
   // an unwrap here.
-  let handle = XInputHandle::load_default().unwrap();
+  let handle = rusty_xinput::XInputHandle::load_default().unwrap();
 
   // Quick rumble test. Note that the controller might not _have_ rumble.
   trace!("rumble on:{:?}", handle.set_state(0, 1000, 1000));
