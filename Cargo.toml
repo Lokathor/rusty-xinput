@@ -6,7 +6,7 @@ repository = "https://github.com/Lokathor/rusty-xinput"
 readme = "README.md"
 keywords = ["xinput"]
 description = "Safe dynamic loading of xinput."
-license = "0BSD"
+license = "Zlib"
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
