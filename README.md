@@ -1,4 +1,4 @@
-[![License:0BSD](https://img.shields.io/badge/License-0BSD-brightgreen.svg)](https://opensource.org/licenses/FPL-1.0.0)
+<!-- TODO: Zlib license link here -->
 [![CratesIO](https://img.shields.io/crates/v/rusty-xinput.svg)](https://crates.io/crates/rusty-xinput)
 [![DocsRS](https://docs.rs/rusty-xinput/badge.svg)](https://docs.rs/rusty-xinput/)
 [![Appveyor](https://ci.appveyor.com/api/projects/status/2nhvh047mrv8plen?svg=true)](https://ci.appveyor.com/project/Lokathor/rusty-xinput)
