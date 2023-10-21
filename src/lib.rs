@@ -22,7 +22,9 @@
 //! Note that there are theoretically other XInput extras you might care about,
 //! but they're only available in Windows 8+ and I use Windows 7, so oh well.
 
+#![allow(unknown_lints)] // Between 1.24.0 and nightly, there are new lints we want to ignore.
 #![allow(non_upper_case_globals)]
+#![allow(bare_trait_objects)] // `&dyn Trait` syntax not stable in 1.24.0, so don't warn about it.
 #![warn(missing_docs)]
 #![forbid(missing_debug_implementations)]
 #![cfg(windows)]
@@ -42,7 +44,8 @@ use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_EMPTY, ERROR_SU
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
-use std::fmt::{self, Debug, Formatter};
+use std::error::Error;
+use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::Arc;
 
 type XInputEnableFunc = unsafe extern "system" fn(BOOL);
@@ -154,6 +157,18 @@ pub enum XInputLoadingFailure {
   /// situation to find. Either way, the xinput status is set to "uninitialized"
   /// and as with the NoDLL error you could potentially try again.
   NoPointers,
+}
+
+impl Display for XInputLoadingFailure {
+  fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+    Debug::fmt(self, fmt)
+  }
+}
+
+impl Error for XInputLoadingFailure {
+  fn description(&self) -> &str {
+    "XInput loading failure"
+  }
 }
 
 impl XInputHandle {
@@ -698,6 +713,18 @@ pub enum XInputUsageError {
   UnknownError(u32),
 }
 
+impl Display for XInputUsageError {
+  fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+    Debug::fmt(self, fmt)
+  }
+}
+
+impl Error for XInputUsageError {
+  fn description(&self) -> &str {
+    "XInput usage error"
+  }
+}
+
 /// Error that can be returned by functions that are not guaranteed to be present
 /// in earlier XInput versions.
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -713,6 +740,18 @@ pub enum XInputOptionalFnUsageError {
   /// There was some sort of unexpected error happened, this is the error code
   /// windows returned.
   UnknownError(u32),
+}
+
+impl Display for XInputOptionalFnUsageError {
+  fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+    Debug::fmt(self, fmt)
+  }
+}
+
+impl Error for XInputOptionalFnUsageError {
+  fn description(&self) -> &str {
+    "XInput optional function usage error"
+  }
 }
 
 impl XInputHandle {
@@ -1016,4 +1055,13 @@ pub fn xinput_get_headset_battery_information(
     Ok(ref handle) => handle.get_headset_battery_information(user_index),
     Err(_) => Err(XInputOptionalFnUsageError::XInputNotLoaded),
   }
+}
+
+#[cfg(test)]
+#[allow(dead_code)] // Compilation test
+fn can_box_errors() -> Result<(), Box<Error>> {
+  let xinput = XInputHandle::load_default()?; // XInputLoadingFailure
+  let _state = xinput.get_state(0)?; // XInputUsageError
+  let _battery_info = xinput.get_headset_battery_information(0)?; // XInputOptionalFnUsageError
+  Ok(())
 }
