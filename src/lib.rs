@@ -403,6 +403,7 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
 ///
 /// If you want to do something that the rust wrapper doesn't support, just use
 /// the raw field to get at the inner value.
+#[derive(Copy, Clone, Default)]
 pub struct XInputState {
   /// The raw value we're wrapping.
   pub raw: XINPUT_STATE,
