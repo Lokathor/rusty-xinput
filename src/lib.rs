@@ -183,7 +183,7 @@ impl XInputHandle {
     let xinput11 = "xinput1_1.dll";
     let xinput91 = "xinput9_1_0.dll";
 
-    for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91].into_iter() {
+    for lib_name in [xinput14, xinput13, xinput12, xinput11, xinput91] {
       if let Ok(handle) = XInputHandle::load(lib_name) {
         return Ok(handle);
       }
@@ -329,6 +329,7 @@ impl XInputHandle {
     }
 
     // this is safe because no other code can be loading xinput at the same time as us.
+    #[allow(clippy::unnecessary_unwrap)]
     if opt_xinput_enable.is_some()
       && opt_xinput_get_state.is_some()
       && opt_xinput_set_state.is_some()
@@ -689,16 +690,14 @@ impl XInputState {
 }
 
 #[test]
+#[rustfmt::skip]
 fn normalize_raw_stick_value_test() {
-  for &x in [i16::min_value(), i16::max_value()].into_iter() {
-    for &y in [i16::min_value(), i16::max_value()].into_iter() {
-      #[cfg_attr(rustfmt, rustfmt_skip)]
-      for &deadzone in [i16::min_value(), 0, i16::max_value() / 2,
-                        i16::max_value() - 1, i16::max_value()].into_iter() {
+  for x in [i16::min_value(), i16::max_value()] {
+    for y in [i16::min_value(), i16::max_value()] {
+      for deadzone in [i16::min_value(), 0, i16::max_value() / 2,
+                        i16::max_value() - 1, i16::max_value()] {
         let f = XInputState::normalize_raw_stick_value((x, y), deadzone);
-        #[cfg_attr(rustfmt, rustfmt_skip)]
         assert!(f.0.abs() <= 1.0, "XFail: x {}, y {}, dz {} f {:?}", x, y, deadzone, f);
-        #[cfg_attr(rustfmt, rustfmt_skip)]
         assert!(f.1.abs() <= 1.0, "YFail: x {}, y {}, dz {} f {:?}", x, y, deadzone, f);
       }
     }
@@ -741,7 +740,7 @@ impl XInputHandle {
   /// Enables or disables XInput.
   ///
   /// See the [MSDN documentation for XInputEnable](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputenable).
-  pub fn enable(&self, enable: bool) -> () {
+  pub fn enable(&self, enable: bool) {
     unsafe { (self.xinput_enable)(enable as BOOL) };
   }
 
@@ -775,7 +774,7 @@ impl XInputHandle {
       let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
       let return_status = unsafe { (self.xinput_get_state)(user_index, &mut output) };
       match return_status {
-        ERROR_SUCCESS => return Ok(XInputState { raw: output }),
+        ERROR_SUCCESS => Ok(XInputState { raw: output }),
         ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
         s => {
           trace!("Unexpected error code: {}", s);
@@ -862,7 +861,7 @@ impl XInputHandle {
       Err(XInputUsageError::InvalidControllerID)
     } else {
       unsafe {
-        let mut capabilities = std::mem::uninitialized();
+        let mut capabilities = std::mem::zeroed();
         let return_status = (self.xinput_get_capabilities)(user_index, 0, &mut capabilities);
         match return_status {
           ERROR_SUCCESS => Ok(capabilities),
@@ -887,7 +886,7 @@ impl XInputHandle {
       Err(XInputOptionalFnUsageError::InvalidControllerID)
     } else if let Some(func) = self.opt_xinput_get_keystroke {
       unsafe {
-        let mut keystroke = std::mem::uninitialized();
+        let mut keystroke = std::mem::zeroed();
         let return_status = (func)(user_index, 0, &mut keystroke);
         match return_status {
           ERROR_SUCCESS => Ok(Some(keystroke)),
@@ -924,7 +923,7 @@ impl BatteryType {
 
 impl Debug for BatteryType {
   fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-    let kind: &Debug = match *self {
+    let kind: &dyn Debug = match *self {
       BatteryType::DISCONNECTED => &"DISCONNECTED",
       BatteryType::WIRED => &"WIRED",
       BatteryType::ALKALINE => &"ALKALINE",
@@ -954,7 +953,7 @@ impl BatteryLevel {
 
 impl Debug for BatteryLevel {
   fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-    let level: &Debug = match *self {
+    let level: &dyn Debug = match *self {
       BatteryLevel::EMPTY => &"EMPTY",
       BatteryLevel::LOW => &"LOW",
       BatteryLevel::MEDIUM => &"MEDIUM",
