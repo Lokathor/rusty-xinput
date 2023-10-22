@@ -11,9 +11,6 @@ license = "Zlib OR Apache-2.0 OR MIT"
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
 
-[badges]
-appveyor = { repository = "Lokathor/rusty-xinput" }
-
 [lib]
 name = "rusty_xinput"
 path = "src/lib.rs"
