@@ -403,10 +403,31 @@ pub fn dynamic_load_xinput() -> Result<(), XInputLoadingFailure> {
 ///
 /// If you want to do something that the rust wrapper doesn't support, just use
 /// the raw field to get at the inner value.
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone)]
 pub struct XInputState {
   /// The raw value we're wrapping.
   pub raw: XINPUT_STATE,
+}
+
+impl ::std::default::Default for XInputState {
+  #[inline]
+  #[must_use]
+  fn default() -> Self {
+    Self {
+      raw: XINPUT_STATE {
+        dwPacketNumber: 0,
+        Gamepad: XINPUT_GAMEPAD {
+          wButtons: 0,
+          bLeftTrigger: 0,
+          bRightTrigger: 0,
+          sThumbLX: 0,
+          sThumbLY: 0,
+          sThumbRX: 0,
+          sThumbRY: 0,
+        },
+      },
+    }
+  }
 }
 
 impl ::std::cmp::PartialEq for XInputState {
@@ -793,7 +814,10 @@ impl XInputHandle {
   /// Most commonly, a controller will simply not be connected. Most people don't
   /// have all four slots plugged in all the time.
   pub fn set_state(
-    &self, user_index: u32, left_motor_speed: u16, right_motor_speed: u16,
+    &self,
+    user_index: u32,
+    left_motor_speed: u16,
+    right_motor_speed: u16,
   ) -> Result<(), XInputUsageError> {
     if user_index >= 4 {
       Err(XInputUsageError::InvalidControllerID)
@@ -818,7 +842,9 @@ impl XInputHandle {
 /// See `XInputHandle::set_state`
 #[deprecated]
 pub fn xinput_set_state(
-  user_index: u32, left_motor_speed: u16, right_motor_speed: u16,
+  user_index: u32,
+  left_motor_speed: u16,
+  right_motor_speed: u16,
 ) -> Result<(), XInputUsageError> {
   match *GLOBAL_XINPUT_HANDLE {
     Ok(ref handle) => handle.set_state(user_index, left_motor_speed, right_motor_speed),
@@ -853,7 +879,8 @@ impl XInputHandle {
   ///
   /// See the [MSDN documentation for XInputGetKeystroke](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetkeystroke).
   pub fn get_keystroke(
-    &self, user_index: u32,
+    &self,
+    user_index: u32,
   ) -> Result<Option<XINPUT_KEYSTROKE>, XInputOptionalFnUsageError> {
     if user_index >= 4 {
       Err(XInputOptionalFnUsageError::InvalidControllerID)
@@ -951,7 +978,9 @@ pub struct XInputBatteryInformation {
 
 impl XInputHandle {
   fn xinput_get_battery_information(
-    &self, user_index: u32, dev_type: BYTE,
+    &self,
+    user_index: u32,
+    dev_type: BYTE,
   ) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
     if user_index >= 4 {
       Err(XInputOptionalFnUsageError::InvalidControllerID)
@@ -981,7 +1010,8 @@ impl XInputHandle {
   ///
   /// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
   pub fn get_gamepad_battery_information(
-    &self, user_index: u32,
+    &self,
+    user_index: u32,
   ) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
     self.xinput_get_battery_information(user_index, BATTERY_DEVTYPE_GAMEPAD)
   }
@@ -990,7 +1020,8 @@ impl XInputHandle {
   ///
   /// See also [XInputGetBatteryInformation](https://docs.microsoft.com/en-us/windows/desktop/api/xinput/nf-xinput-xinputgetbatteryinformation)
   pub fn get_headset_battery_information(
-    &self, user_index: u32,
+    &self,
+    user_index: u32,
   ) -> Result<XInputBatteryInformation, XInputOptionalFnUsageError> {
     self.xinput_get_battery_information(user_index, BATTERY_DEVTYPE_HEADSET)
   }
