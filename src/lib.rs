@@ -39,11 +39,10 @@ use winapi::shared::guiddef::GUID;
 use winapi::shared::minwindef::{BOOL, BYTE, DWORD, HMODULE, UINT};
 use winapi::shared::ntdef::LPWSTR;
 use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_EMPTY, ERROR_SUCCESS};
-use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryW};
+use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
 use std::fmt::{self, Debug, Formatter};
-use std::sync::Arc;
 
 type XInputEnableFunc = unsafe extern "system" fn(BOOL);
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
@@ -64,17 +63,10 @@ type XInputGetBatteryInformationFunc =
 type XInputGetAudioDeviceIdsFunc =
   unsafe extern "system" fn(DWORD, LPWSTR, *mut UINT, LPWSTR, *mut UINT) -> DWORD;
 
-struct ScopedHMODULE(HMODULE);
-impl Drop for ScopedHMODULE {
-  fn drop(&mut self) {
-    unsafe { FreeLibrary(self.0) };
-  }
-}
-
 /// A handle to a loaded XInput DLL.
 #[derive(Clone)]
 pub struct XInputHandle {
-  handle: Arc<ScopedHMODULE>,
+  handle: HMODULE,
   xinput_enable: XInputEnableFunc,
   xinput_get_state: XInputGetStateFunc,
   xinput_set_state: XInputSetStateFunc,
@@ -88,7 +80,7 @@ pub struct XInputHandle {
 
 impl Debug for XInputHandle {
   fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-    write!(f, "XInputHandle(handle = {:?})", self.handle.0)
+    write!(f, "XInputHandle(handle = {:?})", self.handle)
   }
 }
 
@@ -207,8 +199,6 @@ impl XInputHandle {
       debug!("Success: XInput Loaded: {:?}", WideNullU16(&lib_name));
     }
 
-    let xinput_handle = ScopedHMODULE(xinput_handle);
-
     let enable_name = b"XInputEnable\0";
     let get_state_name = b"XInputGetState\0";
     let set_state_name = b"XInputSetState\0";
@@ -229,7 +219,7 @@ impl XInputHandle {
 
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
-      let enable_ptr = GetProcAddress(xinput_handle.0, enable_name.as_ptr() as *mut i8);
+      let enable_ptr = GetProcAddress(xinput_handle, enable_name.as_ptr() as *mut i8);
       if !enable_ptr.is_null() {
         trace!("Found XInputEnable.");
         opt_xinput_enable = Some(::std::mem::transmute(enable_ptr));
@@ -240,7 +230,7 @@ impl XInputHandle {
 
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
-      let get_state_ptr = GetProcAddress(xinput_handle.0, get_state_name.as_ptr() as *mut i8);
+      let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr() as *mut i8);
       if !get_state_ptr.is_null() {
         trace!("Found XInputGetState.");
         opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
@@ -251,7 +241,7 @@ impl XInputHandle {
 
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
-      let set_state_ptr = GetProcAddress(xinput_handle.0, set_state_name.as_ptr() as *mut i8);
+      let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr() as *mut i8);
       if !set_state_ptr.is_null() {
         trace!("Found XInputSetState.");
         opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
@@ -263,7 +253,7 @@ impl XInputHandle {
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_capabilities_ptr =
-        GetProcAddress(xinput_handle.0, get_capabilities_name.as_ptr() as *mut i8);
+        GetProcAddress(xinput_handle, get_capabilities_name.as_ptr() as *mut i8);
       if !get_capabilities_ptr.is_null() {
         trace!("Found XInputGetCapabilities.");
         opt_xinput_get_capabilities = Some(::std::mem::transmute(get_capabilities_ptr));
@@ -274,8 +264,7 @@ impl XInputHandle {
 
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
-      let get_keystroke_ptr =
-        GetProcAddress(xinput_handle.0, get_keystroke_name.as_ptr() as *mut i8);
+      let get_keystroke_ptr = GetProcAddress(xinput_handle, get_keystroke_name.as_ptr() as *mut i8);
       if !get_keystroke_ptr.is_null() {
         trace!("Found XInputGetKeystroke.");
         opt_xinput_get_keystroke = Some(::std::mem::transmute(get_keystroke_ptr));
@@ -287,7 +276,7 @@ impl XInputHandle {
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_battery_information_ptr = GetProcAddress(
-        xinput_handle.0,
+        xinput_handle,
         get_battery_information_name.as_ptr() as *mut i8,
       );
       if !get_battery_information_ptr.is_null() {
@@ -302,7 +291,7 @@ impl XInputHandle {
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_dsound_audio_device_guids_ptr = GetProcAddress(
-        xinput_handle.0,
+        xinput_handle,
         get_dsound_audio_device_guids_name.as_ptr() as *mut i8,
       );
       if !get_dsound_audio_device_guids_ptr.is_null() {
@@ -316,10 +305,8 @@ impl XInputHandle {
 
     // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
-      let get_audio_device_ids_ptr = GetProcAddress(
-        xinput_handle.0,
-        get_audio_device_ids_name.as_ptr() as *mut i8,
-      );
+      let get_audio_device_ids_ptr =
+        GetProcAddress(xinput_handle, get_audio_device_ids_name.as_ptr() as *mut i8);
       if !get_audio_device_ids_ptr.is_null() {
         trace!("Found XInputGetAudioDeviceIds.");
         opt_xinput_get_audio_device_ids = Some(::std::mem::transmute(get_audio_device_ids_ptr));
@@ -337,7 +324,7 @@ impl XInputHandle {
     {
       debug!("All function pointers loaded successfully.");
       Ok(XInputHandle {
-        handle: Arc::new(xinput_handle),
+        handle: xinput_handle,
         xinput_enable: opt_xinput_enable.unwrap(),
         xinput_get_state: opt_xinput_get_state.unwrap(),
         xinput_set_state: opt_xinput_set_state.unwrap(),
