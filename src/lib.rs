@@ -81,8 +81,9 @@ pub struct XInputHandle {
   xinput_get_capabilities: XInputGetCapabilitiesFunc,
   opt_xinput_get_keystroke: Option<XInputGetKeystrokeFunc>,
   opt_xinput_get_battery_information: Option<XInputGetBatteryInformationFunc>,
-  opt_xinput_get_audio_device_ids: Option<XInputGetAudioDeviceIdsFunc>,
-  opt_xinput_get_dsound_audio_device_guids: Option<XInputGetDSoundAudioDeviceGuidsFunc>,
+  // some day we should use these
+  _opt_xinput_get_audio_device_ids: Option<XInputGetAudioDeviceIdsFunc>,
+  _opt_xinput_get_dsound_audio_device_guids: Option<XInputGetDSoundAudioDeviceGuidsFunc>,
 }
 
 impl Debug for XInputHandle {
@@ -342,8 +343,8 @@ impl XInputHandle {
         xinput_get_capabilities: opt_xinput_get_capabilities.unwrap(),
         opt_xinput_get_keystroke,
         opt_xinput_get_battery_information,
-        opt_xinput_get_dsound_audio_device_guids,
-        opt_xinput_get_audio_device_ids,
+        _opt_xinput_get_dsound_audio_device_guids: opt_xinput_get_dsound_audio_device_guids,
+        _opt_xinput_get_audio_device_ids: opt_xinput_get_audio_device_ids,
       })
     } else {
       debug!("Could not load the function pointers.");
