@@ -42,10 +42,14 @@ use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_EMPTY, ERROR_SU
 use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryW};
 use winapi::um::xinput::*;
 
+/// GetStateEx can get this in wButton
+pub const XINPUT_GAMEPAD_GUIDE: winapi::shared::minwindef::WORD = 0x0400;
+
 use std::fmt::{self, Debug, Formatter};
 
 type XInputEnableFunc = unsafe extern "system" fn(BOOL);
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
+type XInputGetStateExFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
 type XInputGetCapabilitiesFunc =
   unsafe extern "system" fn(DWORD, DWORD, *mut XINPUT_CAPABILITIES) -> DWORD;
@@ -69,6 +73,7 @@ pub struct XInputHandle {
   handle: HMODULE,
   xinput_enable: XInputEnableFunc,
   xinput_get_state: XInputGetStateFunc,
+  xinput_get_state_ex: XInputGetStateExFunc,
   xinput_set_state: XInputSetStateFunc,
   xinput_get_capabilities: XInputGetCapabilitiesFunc,
   opt_xinput_get_keystroke: Option<XInputGetKeystrokeFunc>,
@@ -210,6 +215,7 @@ impl XInputHandle {
 
     let mut opt_xinput_enable = None;
     let mut opt_xinput_get_state = None;
+    let mut opt_xinput_get_state_ex = None;
     let mut opt_xinput_set_state = None;
     let mut opt_xinput_get_capabilities = None;
     let mut opt_xinput_get_keystroke = None;
@@ -236,6 +242,17 @@ impl XInputHandle {
         opt_xinput_get_state = Some(::std::mem::transmute(get_state_ptr));
       } else {
         trace!("Could not find XInputGetState.");
+      }
+    }
+
+    // using transmute is so dodgy we'll put that in its own unsafe block.
+    unsafe {
+      let get_state_ex_ptr = GetProcAddress(xinput_handle, 100_i32 as winapi::um::winnt::LPCSTR);
+      if !get_state_ex_ptr.is_null() {
+        trace!("Found XInputGetStateEx.");
+        opt_xinput_get_state_ex = Some(::std::mem::transmute(get_state_ex_ptr));
+      } else {
+        trace!("Could not find XInputGetStateEx.");
       }
     }
 
@@ -318,7 +335,8 @@ impl XInputHandle {
     // this is safe because no other code can be loading xinput at the same time as us.
     #[allow(clippy::unnecessary_unwrap)]
     if opt_xinput_enable.is_some()
-      && opt_xinput_get_state.is_some()
+    && opt_xinput_get_state.is_some()
+    && opt_xinput_get_state_ex.is_some()
       && opt_xinput_set_state.is_some()
       && opt_xinput_get_capabilities.is_some()
     {
@@ -327,6 +345,7 @@ impl XInputHandle {
         handle: xinput_handle,
         xinput_enable: opt_xinput_enable.unwrap(),
         xinput_get_state: opt_xinput_get_state.unwrap(),
+        xinput_get_state_ex: opt_xinput_get_state_ex.unwrap(),
         xinput_set_state: opt_xinput_set_state.unwrap(),
         xinput_get_capabilities: opt_xinput_get_capabilities.unwrap(),
         opt_xinput_get_keystroke,
@@ -520,6 +539,16 @@ impl XInputState {
   #[inline]
   pub fn select_button(&self) -> bool {
     self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_BACK != 0
+  }
+
+  /// The "guide" button.
+  ///
+  /// * Nintendo: Home
+  /// * Playstation: PS
+  /// * XBox: Guide
+  #[inline]
+  pub fn guide_button(&self) -> bool {
+    self.raw.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE != 0
   }
 
   /// The upper left shoulder button.
@@ -760,6 +789,24 @@ impl XInputHandle {
     } else {
       let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
       let return_status = unsafe { (self.xinput_get_state)(user_index, &mut output) };
+      match return_status {
+        ERROR_SUCCESS => Ok(XInputState { raw: output }),
+        ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
+        s => {
+          trace!("Unexpected error code: {}", s);
+          Err(XInputUsageError::UnknownError(s))
+        }
+      }
+    }
+  }
+
+  /// see get_state, but XINPUT_GAMEPAD_GUIDE in XInputState
+  pub fn get_state_ex(&self, user_index: u32) -> Result<XInputState, XInputUsageError> {
+    if user_index >= 4 {
+      Err(XInputUsageError::InvalidControllerID)
+    } else {
+      let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
+      let return_status = unsafe { (self.xinput_get_state_ex)(user_index, &mut output) };
       match return_status {
         ERROR_SUCCESS => Ok(XInputState { raw: output }),
         ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
