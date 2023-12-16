@@ -54,7 +54,7 @@ type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION
 type XInputGetCapabilitiesFunc =
   unsafe extern "system" fn(DWORD, DWORD, *mut XINPUT_CAPABILITIES) -> DWORD;
 
-// Removed in xinput1_4.dll.
+// **Removed** in xinput1_4.dll.
 type XInputGetDSoundAudioDeviceGuidsFunc =
   unsafe extern "system" fn(DWORD, *mut GUID, *mut GUID) -> DWORD;
 
@@ -73,7 +73,7 @@ pub struct XInputHandle {
   handle: HMODULE,
   xinput_enable: XInputEnableFunc,
   xinput_get_state: XInputGetStateFunc,
-  xinput_get_state_ex: XInputGetStateExFunc,
+  opt_xinput_get_state_ex: Option<XInputGetStateExFunc>,
   xinput_set_state: XInputSetStateFunc,
   xinput_get_capabilities: XInputGetCapabilitiesFunc,
   opt_xinput_get_keystroke: Option<XInputGetKeystrokeFunc>,
@@ -223,7 +223,6 @@ impl XInputHandle {
     let mut opt_xinput_get_audio_device_ids = None;
     let mut opt_xinput_get_dsound_audio_device_guids = None;
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let enable_ptr = GetProcAddress(xinput_handle, enable_name.as_ptr() as *mut i8);
       if !enable_ptr.is_null() {
@@ -234,7 +233,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_state_ptr = GetProcAddress(xinput_handle, get_state_name.as_ptr() as *mut i8);
       if !get_state_ptr.is_null() {
@@ -245,7 +243,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_state_ex_ptr = GetProcAddress(xinput_handle, 100_i32 as winapi::um::winnt::LPCSTR);
       if !get_state_ex_ptr.is_null() {
@@ -256,7 +253,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr() as *mut i8);
       if !set_state_ptr.is_null() {
@@ -267,7 +263,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_capabilities_ptr =
         GetProcAddress(xinput_handle, get_capabilities_name.as_ptr() as *mut i8);
@@ -279,7 +274,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_keystroke_ptr = GetProcAddress(xinput_handle, get_keystroke_name.as_ptr() as *mut i8);
       if !get_keystroke_ptr.is_null() {
@@ -290,7 +284,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_battery_information_ptr = GetProcAddress(
         xinput_handle,
@@ -305,7 +298,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_dsound_audio_device_guids_ptr = GetProcAddress(
         xinput_handle,
@@ -320,7 +312,6 @@ impl XInputHandle {
       }
     }
 
-    // using transmute is so dodgy we'll put that in its own unsafe block.
     unsafe {
       let get_audio_device_ids_ptr =
         GetProcAddress(xinput_handle, get_audio_device_ids_name.as_ptr() as *mut i8);
@@ -332,11 +323,9 @@ impl XInputHandle {
       }
     }
 
-    // this is safe because no other code can be loading xinput at the same time as us.
     #[allow(clippy::unnecessary_unwrap)]
     if opt_xinput_enable.is_some()
-    && opt_xinput_get_state.is_some()
-    && opt_xinput_get_state_ex.is_some()
+      && opt_xinput_get_state.is_some()
       && opt_xinput_set_state.is_some()
       && opt_xinput_get_capabilities.is_some()
     {
@@ -345,9 +334,9 @@ impl XInputHandle {
         handle: xinput_handle,
         xinput_enable: opt_xinput_enable.unwrap(),
         xinput_get_state: opt_xinput_get_state.unwrap(),
-        xinput_get_state_ex: opt_xinput_get_state_ex.unwrap(),
         xinput_set_state: opt_xinput_set_state.unwrap(),
         xinput_get_capabilities: opt_xinput_get_capabilities.unwrap(),
+        opt_xinput_get_state_ex,
         opt_xinput_get_keystroke,
         opt_xinput_get_battery_information,
         _opt_xinput_get_dsound_audio_device_guids: opt_xinput_get_dsound_audio_device_guids,
@@ -762,11 +751,14 @@ impl XInputHandle {
 
   /// Polls the controller port given for the current controller state.
   ///
+  /// This cannot detect the "Guide" button. Use
+  /// [`get_state_ex`](Self::get_state_ex) for that.
+  ///
   /// # Notes
   ///
-  /// It is a persistent problem (since ~2007?) with xinput that polling for the
-  /// data of a controller that isn't connected will cause a long delay. In the
-  /// area of 500_000 cpu cycles. That's like 2_000 cache misses in a row.
+  /// It is a persistent problem with xinput (since ~2007?) that polling for the
+  /// data of a controller that isn't connected will cause a long stall. In the
+  /// area of 500,000 cpu cycles. That's like 2,000 cache misses in a row.
   ///
   /// Once a controller is detected as not being plugged in you are strongly
   /// advised to not poll for its data again next frame. Instead, you should
@@ -781,8 +773,8 @@ impl XInputHandle {
   /// A few things can cause an `Err` value to come back, as explained by the
   /// `XInputUsageError` type.
   ///
-  /// Most commonly, a controller will simply not be connected. Most people don't
-  /// have all four slots plugged in all the time.
+  /// Most commonly, a controller will simply not be connected. Most people
+  /// don't have all four slots plugged in all the time.
   pub fn get_state(&self, user_index: u32) -> Result<XInputState, XInputUsageError> {
     if user_index >= 4 {
       Err(XInputUsageError::InvalidControllerID)
@@ -800,13 +792,23 @@ impl XInputHandle {
     }
   }
 
-  /// see get_state, but XINPUT_GAMEPAD_GUIDE in XInputState
+  /// Works like `get_state`, but can detect the "Guide" button as well.
+  ///
+  /// ## Failure
+  ///
+  /// * This function is technically an undocumented API. It was introduced in
+  ///   XInput 1.3, but may not be present in the currently loaded XInput. If
+  ///   it's not available then `XInputNotLoaded` is returned as an `Err`, even
+  ///   when other XInput functions may be available.
   pub fn get_state_ex(&self, user_index: u32) -> Result<XInputState, XInputUsageError> {
     if user_index >= 4 {
       Err(XInputUsageError::InvalidControllerID)
     } else {
       let mut output: XINPUT_STATE = unsafe { ::std::mem::zeroed() };
-      let return_status = unsafe { (self.xinput_get_state_ex)(user_index, &mut output) };
+      let return_status = match self.opt_xinput_get_state_ex {
+        Some(f) => unsafe { f(user_index, &mut output) },
+        None => return Err(XInputUsageError::XInputNotLoaded),
+      };
       match return_status {
         ERROR_SUCCESS => Ok(XInputState { raw: output }),
         ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
