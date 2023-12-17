@@ -50,11 +50,16 @@ pub const XINPUT_GAMEPAD_GUIDE: winapi::shared::minwindef::WORD = 0x0400;
 #[derive(Clone, Copy)]
 #[allow(non_camel_case_types)]
 pub struct XINPUT_CAPABILITIES_EX {
-  capabilities: XINPUT_CAPABILITIES,
-  vendor_id: WORD,
-  product_id: WORD,
-  revision_id: WORD,
-  a4: DWORD,
+  /// The wrapped "basic capabilities" value
+  pub capabilities: XINPUT_CAPABILITIES,
+  /// USB Vendor ID of the attached controller
+  pub vendor_id: WORD,
+  /// USB Product ID of the attached controller
+  pub product_id: WORD,
+  /// USB Revision ID of the attached controller
+  pub revision_id: WORD,
+  /// unknown use
+  pub a4: DWORD,
 }
 impl ::std::fmt::Debug for XINPUT_CAPABILITIES_EX {
   fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
