@@ -36,7 +36,7 @@ extern crate lazy_static;
 extern crate winapi;
 
 use winapi::shared::guiddef::GUID;
-use winapi::shared::minwindef::{BOOL, BYTE, DWORD, HMODULE, UINT};
+use winapi::shared::minwindef::{BOOL, BYTE, DWORD, HMODULE, UINT, WORD};
 use winapi::shared::ntdef::LPWSTR;
 use winapi::shared::winerror::{ERROR_DEVICE_NOT_CONNECTED, ERROR_EMPTY, ERROR_SUCCESS};
 use winapi::um::libloaderapi::{GetProcAddress, LoadLibraryW};
@@ -45,14 +45,42 @@ use winapi::um::xinput::*;
 /// GetStateEx can get this in wButton
 pub const XINPUT_GAMEPAD_GUIDE: winapi::shared::minwindef::WORD = 0x0400;
 
+/// Capabilities info from the undocumented `XInputGetCapabilitiesEx` fn.
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub struct XINPUT_CAPABILITIES_EX {
+  /// The wrapped "basic capabilities" value
+  pub capabilities: XINPUT_CAPABILITIES,
+  /// USB Vendor ID of the attached controller
+  pub vendor_id: WORD,
+  /// USB Product ID of the attached controller
+  pub product_id: WORD,
+  /// USB Revision ID of the attached controller
+  pub revision_id: WORD,
+  /// unknown use
+  pub a4: DWORD,
+}
+impl ::std::fmt::Debug for XINPUT_CAPABILITIES_EX {
+  fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    write!(f, "XINPUT_CAPABILITIES_EX (_)")
+  }
+}
+
 use std::fmt::{self, Debug, Formatter};
 
 type XInputEnableFunc = unsafe extern "system" fn(BOOL);
 type XInputGetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
-type XInputGetStateExFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
 type XInputSetStateFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_VIBRATION) -> DWORD;
 type XInputGetCapabilitiesFunc =
   unsafe extern "system" fn(DWORD, DWORD, *mut XINPUT_CAPABILITIES) -> DWORD;
+
+// undocumented
+type XInputGetStateExFunc = unsafe extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
+
+// undocumented
+type XInputGetCapabilitiesEx =
+  unsafe extern "system" fn(DWORD, DWORD, DWORD, *mut XINPUT_CAPABILITIES_EX) -> DWORD;
 
 // **Removed** in xinput1_4.dll.
 type XInputGetDSoundAudioDeviceGuidsFunc =
@@ -73,9 +101,10 @@ pub struct XInputHandle {
   handle: HMODULE,
   xinput_enable: XInputEnableFunc,
   xinput_get_state: XInputGetStateFunc,
-  opt_xinput_get_state_ex: Option<XInputGetStateExFunc>,
   xinput_set_state: XInputSetStateFunc,
   xinput_get_capabilities: XInputGetCapabilitiesFunc,
+  opt_xinput_get_state_ex: Option<XInputGetStateExFunc>,
+  opt_xinput_get_capabilities_ex: Option<XInputGetCapabilitiesEx>,
   opt_xinput_get_keystroke: Option<XInputGetKeystrokeFunc>,
   opt_xinput_get_battery_information: Option<XInputGetBatteryInformationFunc>,
   // some day we should use these
@@ -218,6 +247,7 @@ impl XInputHandle {
     let mut opt_xinput_get_state_ex = None;
     let mut opt_xinput_set_state = None;
     let mut opt_xinput_get_capabilities = None;
+    let mut opt_xinput_get_capabilities_ex = None;
     let mut opt_xinput_get_keystroke = None;
     let mut opt_xinput_get_battery_information = None;
     let mut opt_xinput_get_audio_device_ids = None;
@@ -244,22 +274,22 @@ impl XInputHandle {
     }
 
     unsafe {
-      let get_state_ex_ptr = GetProcAddress(xinput_handle, 100_i32 as winapi::um::winnt::LPCSTR);
-      if !get_state_ex_ptr.is_null() {
-        trace!("Found XInputGetStateEx.");
-        opt_xinput_get_state_ex = Some(::std::mem::transmute(get_state_ex_ptr));
-      } else {
-        trace!("Could not find XInputGetStateEx.");
-      }
-    }
-
-    unsafe {
       let set_state_ptr = GetProcAddress(xinput_handle, set_state_name.as_ptr() as *mut i8);
       if !set_state_ptr.is_null() {
         trace!("Found XInputSetState.");
         opt_xinput_set_state = Some(::std::mem::transmute(set_state_ptr));
       } else {
         trace!("Could not find XInputSetState.");
+      }
+    }
+
+    unsafe {
+      let get_state_ex_ptr = GetProcAddress(xinput_handle, 100_i32 as winapi::um::winnt::LPCSTR);
+      if !get_state_ex_ptr.is_null() {
+        trace!("Found XInputGetStateEx.");
+        opt_xinput_get_state_ex = Some(::std::mem::transmute(get_state_ex_ptr));
+      } else {
+        trace!("Could not find XInputGetStateEx.");
       }
     }
 
@@ -271,6 +301,17 @@ impl XInputHandle {
         opt_xinput_get_capabilities = Some(::std::mem::transmute(get_capabilities_ptr));
       } else {
         trace!("Could not find XInputGetCapabilities.");
+      }
+    }
+
+    unsafe {
+      let get_capabilities_ptr =
+        GetProcAddress(xinput_handle, 108_i32 as winapi::um::winnt::LPCSTR);
+      if !get_capabilities_ptr.is_null() {
+        trace!("Found XInputGetCapabilities.");
+        opt_xinput_get_capabilities_ex = Some(::std::mem::transmute(get_capabilities_ptr));
+      } else {
+        trace!("Could not find XInputGetCapabilitiesEx.");
       }
     }
 
@@ -336,6 +377,7 @@ impl XInputHandle {
         xinput_get_state: opt_xinput_get_state.unwrap(),
         xinput_set_state: opt_xinput_set_state.unwrap(),
         xinput_get_capabilities: opt_xinput_get_capabilities.unwrap(),
+        opt_xinput_get_capabilities_ex,
         opt_xinput_get_state_ex,
         opt_xinput_get_keystroke,
         opt_xinput_get_battery_information,
@@ -901,6 +943,39 @@ impl XInputHandle {
         let return_status = (self.xinput_get_capabilities)(user_index, 0, &mut capabilities);
         match return_status {
           ERROR_SUCCESS => Ok(capabilities),
+          ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
+          s => {
+            trace!("Unexpected error code: {}", s);
+            Err(XInputUsageError::UnknownError(s))
+          }
+        }
+      }
+    }
+  }
+  /// Retrieve the Extended capabilities of a controller.
+  ///
+  /// Undocumented!! This isn't part of the official XInput API, but is often available.
+  ///
+  /// ## Failure
+  ///
+  /// * This function is technically an undocumented API. If
+  ///   it's not available then `XInputNotLoaded` is returned as an `Err`, even
+  ///   when other XInput functions may be available.
+  pub fn get_capabilities_ex(
+    &self,
+    user_index: u32,
+  ) -> Result<XINPUT_CAPABILITIES_EX, XInputUsageError> {
+    if user_index >= 4 {
+      Err(XInputUsageError::InvalidControllerID)
+    } else {
+      unsafe {
+        let mut capabilities_ex = std::mem::zeroed();
+        let return_status = match self.opt_xinput_get_capabilities_ex {
+          None => return Err(XInputUsageError::XInputNotLoaded),
+          Some(f) => f(1, user_index, 0, &mut capabilities_ex),
+        };
+        match return_status {
+          ERROR_SUCCESS => Ok(capabilities_ex),
           ERROR_DEVICE_NOT_CONNECTED => Err(XInputUsageError::DeviceNotConnected),
           s => {
             trace!("Unexpected error code: {}", s);
